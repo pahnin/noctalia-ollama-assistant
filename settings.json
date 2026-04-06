@@ -1,0 +1,29 @@
+{
+  "ai": {
+    "provider": "openai_compatible",
+    "models": {
+      "openai_compatible": "qwen3.5:9b"
+    },
+    "apiKeys": {
+      "google": "",
+      "openai_compatible": ""
+    },
+    "temperature": 0.7,
+    "systemPrompt": "You are a helpful assistant integrated into a Linux desktop shell. Be concise and helpful.",
+    "openaiLocal": true,
+    "openaiBaseUrl": "http://localhost:11434/v1/chat/completions",
+    "model": "qwen3.5:9b"
+  },
+  "translator": {
+    "backend": "google",
+    "deeplApiKey": "",
+    "realTimeTranslation": true
+  },
+  "maxHistoryLength": 100,
+  "panelDetached": false,
+  "panelPosition": "top",
+  "panelHeightRatio": 0.8,
+  "panelWidth": 710,
+  "attachmentStyle": "connected",
+  "scale": 0.96
+}

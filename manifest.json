@@ -1,0 +1,44 @@
+{
+  "id": "ollama-assistant-panel",
+  "name": "Ollama Assistant Panel",
+  "version": "2.1.6",
+  "minNoctaliaVersion": "4.1.2",
+  "author": "phanindra srungavarapu",
+  "license": "MIT",
+  "repository": "https://github.com/pahnin/noctalia-plugins",
+  "description": "Ollama Chat panel for Noctalia",
+  "tags": [
+    "Bar",
+    "Panel",
+    "AI",
+    "Productivity",
+    "Network"
+  ],
+  "entryPoints": {
+    "main": "Main.qml",
+    "barWidget": "BarWidget.qml",
+    "panel": "Panel.qml",
+    "settings": "Settings.qml"
+  },
+  "dependencies": {
+    "plugins": []
+  },
+  "metadata": {
+    "defaultSettings": {
+      "maxHistoryLength": 100,
+      "panelDetached": false,
+      "panelPosition": "bottom",
+      "panelHeightRatio": 0.85,
+      "panelWidth": 720,
+      "scale": 1,
+      "ai": {
+        "provider": "openai",
+        "model": "qwen3.5:9b",
+        "apiKeys": {},
+        "temperature": 0.7,
+        "systemPrompt": "You are a helpful assistant integrated into a Linux deskto. Be concise and helpful.",
+        "maxHistoryLength": 100
+      }
+    }
+  }
+}
