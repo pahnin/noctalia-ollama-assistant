@@ -20,13 +20,8 @@ Item {
   property string errorMessage: ""
   property bool isManuallyStopped: false
 
-  // Translation state
-  property string translatedText: ""
-  property bool isTranslating: false
-  property string translationError: ""
-
   // Cache directory for state (messages, activeTab) - use global noctalia cache
-  readonly property string cacheDir: typeof Settings !== 'undefined' && Settings.cacheDir ? Settings.cacheDir + "plugins/assistant-panel/" : ""
+  readonly property string cacheDir: typeof Settings !== 'undefined' && Settings.cacheDir ? Settings.cacheDir + "plugins/ollama-assistant/" : ""
   readonly property string stateCachePath: cacheDir + "state.json"
 
   property string activeTab: "ai"  // UI state - persisted to cache
@@ -35,22 +30,16 @@ Item {
 
   // Provider configurations
   readonly property var providers: ({
-      [Constants.Providers.GOOGLE]: {
-        "name": "Google Gemini",
-        "defaultModel": "gemini-2.5-flash",
-        "endpoint": "https://generativelanguage.googleapis.com/v1beta/models/{model}:streamGenerateContent?key={apiKey}",
-        "streamEndpoint": "https://generativelanguage.googleapis.com/v1beta/models/{model}:streamGenerateContent?alt=sse&key={apiKey}"
-      },
       [Constants.Providers.OPENAI_COMPATIBLE]: {
         "name": "OpenAI Compatible",
-        "defaultModel": "gpt-4o-mini",
+        "defaultModel": "qwen3.5:9b",
         // Endpoint is dynamic based on settings (openaiBaseUrl)
         "endpoint": ""
       }
     })
 
   // Settings accessors
-  readonly property string provider: pluginApi?.pluginSettings?.ai?.provider || Constants.Providers.GOOGLE
+  readonly property string provider: pluginApi?.pluginSettings?.ai?.provider
   // Prefer per-provider mapping `ai.models[provider]` (if non-empty), fall back to provider default
   readonly property string model: {
     var saved = pluginApi?.pluginSettings?.ai?.models?.[provider];
@@ -59,29 +48,22 @@ Item {
     return providers[provider]?.defaultModel || "";
   }
 
-  // Environment variable API keys - priority over settings
-  readonly property var envApiKeys: ({
-      [Constants.Providers.GOOGLE]: Quickshell.env("NOCTALIA_AP_GOOGLE_API_KEY") || "",
-      [Constants.Providers.OPENAI_COMPATIBLE]: Quickshell.env("NOCTALIA_AP_OPENAI_COMPATIBLE_API_KEY") || ""
-    })
-
-  // API Key Priority: Environment Variable > Local Settings
-  readonly property string envApiKey: envApiKeys[provider] || ""
+  readonly property string envApiKey: ""
   readonly property string settingsApiKey: (pluginApi?.pluginSettings?.ai?.apiKeys && pluginApi.pluginSettings.ai.apiKeys[provider]) || ""
   readonly property string apiKey: envApiKey !== "" ? envApiKey : settingsApiKey
   readonly property bool apiKeyManagedByEnv: envApiKey !== ""
 
-  // DeepL translator env var support
-  readonly property string envDeeplApiKey: Quickshell.env("NOCTALIA_AP_DEEPL_API_KEY") || ""
-  readonly property real temperature: pluginApi?.pluginSettings?.ai?.temperature || 0.7
-  readonly property string systemPrompt: pluginApi?.pluginSettings?.ai?.systemPrompt || ""
-
   // OpenAI Compatible Settings
-  readonly property bool openaiLocal: pluginApi?.pluginSettings?.ai?.openaiLocal ?? false
+  readonly property string systemPrompt: pluginApi?.pluginSettings?.ai?.systemPrompt || ""
+  readonly property real temperature: pluginApi?.pluginSettings?.ai?.temperature || 0.7
+  readonly property bool openaiLocal: pluginApi?.pluginSettings?.ai?.openaiLocal ?? true
   readonly property string openaiBaseUrl: {
     var url = pluginApi?.pluginSettings?.ai?.openaiBaseUrl || "";
     if (url === "")
-      return "https://api.openai.com/v1/chat/completions";
+      if (openaiLocal)
+        return "http://localhost:5001/v1/chat/completions";
+      else
+        return "https://api.openai.com/v1/chat/completions";
     return url;
   }
 
@@ -231,15 +213,13 @@ Item {
     root.currentResponse = "";
     root.errorMessage = "";
 
-    if (provider === Constants.Providers.GOOGLE) {
-      Logger.i("AssistantPanel", "Calling sendGeminiRequest()");
-      sendGeminiRequest();
-    } else if (provider === Constants.Providers.OPENAI_COMPATIBLE) {
+    try {
       Logger.i("AssistantPanel", "Calling sendOpenAIRequest() for " + provider);
       sendOpenAIRequest();
-    } else {
-      Logger.e("AssistantPanel", "Unknown provider: " + provider);
-      root.errorMessage = "Unknown provider selected. Please check settings.";
+    } catch(error) {
+      Logger.e("AssistantPanel", "Error calling sendOpenAIRequest");
+      root.errorMessage = error.message || "Unknown error";
+      Logger.e("AssistantPanel", "Error: " + root.errorMessage);
       root.isGenerating = false;
     }
   }
@@ -292,11 +272,7 @@ Item {
       root.currentResponse = "";
       root.errorMessage = "";
 
-      if (provider === Constants.Providers.GOOGLE) {
-        sendGeminiRequest();
-      } else if (provider === Constants.Providers.OPENAI_COMPATIBLE) {
-        sendOpenAIRequest();
-      }
+      sendOpenAIRequest();
     }
   }
 
@@ -331,104 +307,6 @@ Item {
       });
     }
     return history;
-  }
-
-  // =====================
-  // Google Gemini API
-  // =====================
-  Process {
-    id: geminiProcess
-
-    property string buffer: ""
-
-    stdout: SplitParser {
-      onRead: function (data) {
-        geminiProcess.handleStreamData(data);
-      }
-    }
-
-    stderr: StdioCollector {
-      onStreamFinished: {
-        if (text && text.trim() !== "") {
-          // Try to parse JSON error from stderr if possible
-          try {
-            var json = JSON.parse(text);
-            if (json.error && json.error.message) {
-              root.errorMessage = json.error.message;
-            } else {
-              Logger.e("AssistantPanel", "Gemini stderr: " + text);
-            }
-          } catch (e) {
-            Logger.e("AssistantPanel", "Gemini stderr: " + text);
-          }
-        }
-      }
-    }
-
-    function handleStreamData(data) {
-      var result = ProviderLogic.parseGeminiStream(data);
-      if (!result)
-        return;
-
-      if (result.content) {
-        root.currentResponse += result.content;
-      } else if (result.error) {
-        Logger.e("AssistantPanel", "Gemini stream error: " + result.error);
-        if (!result.error.startsWith("Error parsing SSE")) {
-          root.errorMessage = result.error;
-        }
-      } else if (result.raw) {
-        geminiProcess.buffer += result.raw;
-        try {
-          var errorJson = JSON.parse(geminiProcess.buffer);
-          if (errorJson.error) {
-            root.errorMessage = errorJson.error.message || "API error";
-          }
-          geminiProcess.buffer = "";
-        } catch (e) {
-          // Incomplete
-        }
-      }
-    }
-
-    onExited: function (exitCode, exitStatus) {
-      if (root.isManuallyStopped) {
-        root.isManuallyStopped = false;
-        return;
-      }
-
-      root.isGenerating = false;
-      geminiProcess.buffer = "";
-
-      if (exitCode !== 0 && root.currentResponse === "") {
-        if (root.errorMessage === "") {
-          root.errorMessage = pluginApi?.tr("errors.requestFailed");
-        }
-        return;
-      }
-
-      if (root.currentResponse.trim() !== "") {
-        root.addMessage("assistant", root.currentResponse.trim());
-      }
-      root.chatInputText = ""; // Ensure input is cleared after successful generation
-      root.chatInputCursorPosition = 0;
-      root.saveState();
-    }
-  }
-
-  function sendGeminiRequest() {
-    var history = buildConversationHistory();
-    var commandData = ProviderLogic.buildGeminiCommand(
-      providers[Constants.Providers.GOOGLE].streamEndpoint,
-      model, apiKey, systemPrompt, history, temperature
-    );
-
-    Logger.i("AssistantPanel", "sendGeminiRequest: endpoint=" + commandData.url);
-    geminiProcess.buffer = "";
-    geminiProcess.command = commandData.args;
-    Logger.i("AssistantPanel", "sendGeminiRequest: starting process");
-    _responseBuffer = "";
-    geminiProcess.running = true;
   }
 
   // =====================
@@ -525,95 +403,12 @@ Item {
   // =====================
   // Ollama Process removed (consolidated into OpenAI logic)
 
-  // =====================
-  // Translation
-  // =====================
-  readonly property string translatorBackend: pluginApi?.pluginSettings?.translator?.backend || "google"
-  readonly property string sourceLanguage: pluginApi?.pluginSettings?.translator?.sourceLanguage || "auto"
-  readonly property string targetLanguage: pluginApi?.pluginSettings?.translator?.targetLanguage || "en"
-  readonly property string settingsDeeplApiKey: pluginApi?.pluginSettings?.translator?.deeplApiKey || ""
-  readonly property string deeplApiKey: envDeeplApiKey !== "" ? envDeeplApiKey : settingsDeeplApiKey
-  readonly property bool deeplApiKeyManagedByEnv: envDeeplApiKey !== ""
-
-  function translate(text, targetLang, sourceLang) {
-    if (!text || text.trim() === "") {
-      root.translatedText = "";
-      return;
-    }
-
-    root.isTranslating = true;
-    root.translationError = "";
-
-    var target = targetLang || targetLanguage;
-    var source = sourceLang || sourceLanguage;
-
-    if (translatorBackend === "google") {
-      translateGoogle(text.trim(), target, source);
-    } else if (translatorBackend === "deepl") {
-      translateDeepL(text.trim(), target);
-    }
-  }
-
-  Process {
-    id: translateProcess
-
-    stdout: StdioCollector {
-      onStreamFinished: {
-        root.isTranslating = false;
-        root.handleTranslationResponse(text);
-      }
-    }
-
-    stderr: StdioCollector {}
-
-    onExited: function (exitCode, exitStatus) {
-      if (exitCode !== 0) {
-        root.isTranslating = false;
-        root.translationError = pluginApi?.tr("errors.translationFailed");
-      }
-    }
-  }
-
-  function translateGoogle(text, targetLang, sourceLang) {
-    var commandData = ProviderLogic.buildGoogleTranslateCommand(text, targetLang, sourceLang);
-    translateProcess.command = commandData.args;
-    translateProcess.running = true;
-  }
-
-  function translateDeepL(text, targetLang) {
-    var commandData = ProviderLogic.buildDeepLTranslateCommand(text, targetLang, deeplApiKey);
-
-    if (commandData.error) {
-      root.isTranslating = false;
-      root.translationError = pluginApi?.tr("errors.noDeeplKey");
-      return;
-    }
-
-    translateProcess.command = commandData.args;
-    translateProcess.running = true;
-  }
-
-  function handleTranslationResponse(responseText) {
-    var result = ProviderLogic.parseTranslateResponse(translatorBackend, responseText);
-
-    if (result.error) {
-      // Map known internal error strings to translated ones if needed, otherwise show as is
-      if (result.error === "Empty response")
-        root.translationError = pluginApi?.tr("errors.emptyResponse");
-      else if (result.error === "Failed to parse response")
-        root.translationError = pluginApi?.tr("errors.parseError");
-      else
-        root.translationError = result.error;
-    } else if (result.text) {
-      root.translatedText = result.text;
-    }
-  }
 
   // =====================
   // IPC Handlers
   // =====================
   IpcHandler {
-    target: "plugin:assistant-panel"
+    target: "plugin:ollama-assistant"
 
     function toggle() {
       if (pluginApi) {

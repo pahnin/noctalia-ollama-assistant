@@ -5,7 +5,6 @@
       "openai_compatible": "qwen3.5:9b"
     },
     "apiKeys": {
-      "google": "",
       "openai_compatible": ""
     },
     "temperature": 0.7,
@@ -13,11 +12,6 @@
     "openaiLocal": true,
     "openaiBaseUrl": "http://localhost:11434/v1/chat/completions",
     "model": "qwen3.5:9b"
-  },
-  "translator": {
-    "backend": "google",
-    "deeplApiKey": "",
-    "realTimeTranslation": true
   },
   "maxHistoryLength": 100,
   "panelDetached": false,

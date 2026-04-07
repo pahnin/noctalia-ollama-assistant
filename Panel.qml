@@ -105,11 +105,7 @@ Item {
     if (visible) {
       // Delay to ensure child is ready
       Qt.callLater(function () {
-        if (activeTab === "ai" && aiChatViewRef && aiChatViewRef.focusInput) {
-          aiChatViewRef.focusInput();
-        } else if (activeTab === "translator" && translatorViewRef && translatorViewRef.focusInput) {
-          translatorViewRef.focusInput();
-        }
+        aiChatViewRef.focusInput();
       });
     }
   }
@@ -117,11 +113,7 @@ Item {
   onActiveTabChanged: {
     if (visible) {
       Qt.callLater(function () {
-        if (activeTab === "ai" && aiChatViewRef && aiChatViewRef.focusInput) {
-          aiChatViewRef.focusInput();
-        } else if (activeTab === "translator" && translatorViewRef && translatorViewRef.focusInput) {
-          translatorViewRef.focusInput();
-        }
+        aiChatViewRef.focusInput();
       });
     }
   }
@@ -146,47 +138,56 @@ Item {
       // Tab bar
       Rectangle {
         Layout.fillWidth: true
-        Layout.preferredHeight: (tabRow.implicitHeight * root.uiScale) + Style.marginS * 2
+        Layout.preferredHeight: tabRow.implicitHeight + Style.marginS * 3
         color: Color.mSurfaceVariant
         radius: Style.radiusM
         // Scaled host for tab row so top bar scales with plugin `uiScale`.
-        Item {
+        Flickable {
+          id: flick
+          // height: Math.min(implicitWidth, 50)
           anchors.fill: parent
+          anchors.margins: Style.marginM
+          contentWidth: tabRow.width
+          // contentHeight: height
+          clip: true
+          flickableDirection: Flickable.HorizontalFlick
+          boundsBehavior: Flickable.StopAtBounds
+          // interactive: true
           property real s: root.uiScale
 
-          Item {
-            width: parent.width / (parent.s || 1)
-            height: parent.height / (parent.s || 1)
-            scale: parent.s || 1
-            anchors.centerIn: parent
-            transformOrigin: Item.Center
+          ListModel {
+            id: tabsModel
+            // default elements
+            // 1. Current node
+            // 2. new tab button
+            // 3. clear all button
 
-            RowLayout {
-              id: tabRow
-              anchors.centerIn: parent
-              spacing: Style.marginS
+            // new nodes are to be inserted before the new tab button
+            ListElement { idStr: "currentNode"; label: "Current Node"; icon: "sparkles" }
+            ListElement { idStr: "newNode"; label: "New Tab"; icon: "plus" }
+            ListElement { idStr: "deleteAll"; label: "Clear All"; icon: "trash" }
+          }
 
-              TabButton {
-                icon: "sparkles"
-                label: pluginApi?.tr("tabs.ai")
-                isActive: root.activeTab === "ai"
+          Row {
+            id: tabRow
+            height: implicitHeight
+            spacing: Style.marginS
+            // anchors.margins: Style.marginM
+            // scale: parent.s || 1
+            Repeater {
+              model: tabsModel
+              id: tabRowRepeater
+
+              delegate: TabButton {
+                width: Math.min(implicitWidth * root.uiScale , 200)
+                height: 33 * root.uiScale
+                icon: model.icon
+                label: model.idStr === "currentNode" ? "Chat" : ""
+                isActive: root.activeTab === model.idStr
                 onClicked: {
-                  root.activeTab = "ai";
+                  root.activeTab = model.idStr;
                   if (mainInstance) {
-                    mainInstance.activeTab = "ai";
-                    mainInstance.saveState();
-                  }
-                }
-              }
-
-              TabButton {
-                icon: "language"
-                label: pluginApi?.tr("tabs.translator")
-                isActive: root.activeTab === "translator"
-                onClicked: {
-                  root.activeTab = "translator";
-                  if (mainInstance) {
-                    mainInstance.activeTab = "translator";
+                    mainInstance.activeTab = model.idStr;
                     mainInstance.saveState();
                   }
                 }
@@ -228,18 +229,6 @@ Item {
               anchors.fill: parent
               anchors.margins: Style.marginM
               visible: root.activeTab === "ai"
-              pluginApi: root.pluginApi
-              mainInstance: root.mainInstance
-              onRequestTabCycleForward: root.cycleTab(false)
-              onRequestTabCycleBackward: root.cycleTab(true)
-            }
-
-            // Translator Tab
-            TranslatorView {
-              id: translatorViewRef
-              anchors.fill: parent
-              anchors.margins: Style.marginM
-              visible: root.activeTab === "translator"
               pluginApi: root.pluginApi
               mainInstance: root.mainInstance
               onRequestTabCycleForward: root.cycleTab(false)
