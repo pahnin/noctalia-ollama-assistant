@@ -144,11 +144,9 @@ Item {
         // Scaled host for tab row so top bar scales with plugin `uiScale`.
         Flickable {
           id: flick
-          // height: Math.min(implicitWidth, 50)
           anchors.fill: parent
           anchors.margins: Style.marginM
           contentWidth: tabRow.width
-          // contentHeight: height
           clip: true
           flickableDirection: Flickable.HorizontalFlick
           boundsBehavior: Flickable.StopAtBounds
@@ -172,8 +170,6 @@ Item {
             id: tabRow
             height: implicitHeight
             spacing: Style.marginS
-            // anchors.margins: Style.marginM
-            // scale: parent.s || 1
             Repeater {
               model: tabsModel
               id: tabRowRepeater
@@ -184,13 +180,16 @@ Item {
                 icon: model.icon
                 label: model.idStr === "currentNode" ? "Chat" : ""
                 isActive: root.activeTab === model.idStr
-                onClicked: {
-                  root.activeTab = model.idStr;
-                  if (mainInstance) {
-                    mainInstance.activeTab = model.idStr;
-                    mainInstance.saveState();
-                  }
-                }
+                // TODO: currently the state processing stores all the conversations in single messsages history
+                // Need to redesign state management to support multiple conversations and then
+                // implement injecting nodes dynamically into tabsModel and implement switching between conversations
+                // onClicked: {
+                //  root.activeTab = model.idStr;
+                //  if (mainInstance) {
+                //    mainInstance.activeTab = model.idStr;
+                //    mainInstance.saveState();
+                //  }
+                //}
               }
             }
           }

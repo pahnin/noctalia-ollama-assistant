@@ -30,19 +30,6 @@
     "regenerate": "Regenerate",
     "typing": "Typing..."
   },
-  "translator": {
-    "title": "Translator",
-    "from": "From",
-    "to": "To",
-    "swap": "Swap languages",
-    "inputPlaceholder": "Enter text to translate...",
-    "outputPlaceholder": "Translation will appear here...",
-    "translate": "Translate",
-    "paste": "Paste",
-    "clear": "Clear",
-    "copy": "Copy",
-    "search": "Search"
-  },
   "languages": {
     "auto": "Auto Detect",
     "en": "English",

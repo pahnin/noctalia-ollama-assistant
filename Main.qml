@@ -310,7 +310,7 @@ Item {
   }
 
   // =====================
-  // OpenAI API
+  // OpenAI API Compatible ( ollama )
   // =====================
   Process {
     id: openaiProcess
@@ -397,11 +397,6 @@ Item {
     Logger.i("AssistantPanel", "sendOpenAIRequest: starting process");
     openaiProcess.running = true;
   }
-
-  // =====================
-  // Ollama API (Local)
-  // =====================
-  // Ollama Process removed (consolidated into OpenAI logic)
 
 
   // =====================

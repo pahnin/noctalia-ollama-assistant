@@ -24,7 +24,7 @@ Item {
   property int initialCursorPosition: mainInstance?.chatInputCursorPosition || 0
 
   // Provider info - use mainInstance for computed model (has per-provider logic)
-  readonly property string provider: mainInstance?.provider || Constants.Providers.GOOGLE
+  readonly property string provider: mainInstance?.provider || Constants.Providers.OPENAI_COMPATIBLE
   readonly property string model: mainInstance?.model || ""
 
   ColumnLayout {
@@ -37,7 +37,7 @@ Item {
       spacing: Style.marginS
 
       NIcon {
-        icon: getProviderIcon()
+        icon: "sparkles"
         color: Color.mPrimary
         pointSize: Style.fontSizeM
         applyUiScale: false
@@ -426,16 +426,6 @@ Item {
     inputField.forceActiveFocus();
   }
 
-  function getProviderIcon() {
-    switch (provider) {
-    case Constants.Providers.GOOGLE:
-      return "brand-google";
-    case Constants.Providers.OPENAI_COMPATIBLE:
-      return "brand-openai";
-    default:
-      return "sparkles";
-    }
-  }
 
   // Safe focusInput method for parent to call
   function focusInput() {
