@@ -7,17 +7,17 @@ import qs.Widgets
 import qs.Services.UI
 
 Item {
-  id: root
+  id: panel
   Keys.onPressed: handleKeyPress
 
   function handleKeyPress(event) {
     if (event.key === Qt.Key_Backtab || (event.key === Qt.Key_Tab && (event.modifiers & Qt.ShiftModifier))) {
       // Shift+Tab -> previous
-      root.cycleTab(true);
+      panel.cycleTab(true);
       event.accepted = true;
     } else if (event.key === Qt.Key_Tab && !event.modifiers) {
       // Tab -> next
-      root.cycleTab(false);
+      panel.cycleTab(false);
       event.accepted = true;
     }
   }
@@ -97,7 +97,7 @@ Item {
   property string activeTab: mainInstance?.activeTab || "ai"
 
   Component.onCompleted: {
-    Logger.i("AiAssistant", "Panel initialized");
+    Logger.i("OllamaAssitant", "Panel initialized");
   }
 
   // Focus input when panel is shown and AI tab is active
@@ -128,7 +128,7 @@ Item {
     anchors.verticalCenter: (_detached && _panelPosition === "center" && parent) ? parent.verticalCenter : undefined
     // Left/right mode: no anchors, only x/y
     // ...no horizontal offset logic...
-    y: (_detached && (_panelPosition === "left" || _panelPosition === "right")) ? (root.height - contentPreferredHeight) / 2 : 0
+    y: (_detached && (_panelPosition === "left" || _panelPosition === "right")) ? (panel.height - contentPreferredHeight) / 2 : 0
 
     ColumnLayout {
       anchors.fill: parent
@@ -151,7 +151,7 @@ Item {
           flickableDirection: Flickable.HorizontalFlick
           boundsBehavior: Flickable.StopAtBounds
           // interactive: true
-          property real s: root.uiScale
+          property real s: panel.uiScale
 
           ListModel {
             id: tabsModel
@@ -175,16 +175,16 @@ Item {
               id: tabRowRepeater
 
               delegate: TabButton {
-                width: Math.min(implicitWidth * root.uiScale , 200)
-                height: 33 * root.uiScale
+                width: Math.min(implicitWidth * panel.uiScale , 200)
+                height: 33 * panel.uiScale
                 icon: model.icon
                 label: model.idStr === "currentNode" ? "Chat" : ""
-                isActive: root.activeTab === model.idStr
+                isActive: panel.activeTab === model.idStr
                 // TODO: currently the state processing stores all the conversations in single messsages history
                 // Need to redesign state management to support multiple conversations and then
                 // implement injecting nodes dynamically into tabsModel and implement switching between conversations
                 // onClicked: {
-                //  root.activeTab = model.idStr;
+                //  panel.activeTab = model.idStr;
                 //  if (mainInstance) {
                 //    mainInstance.activeTab = model.idStr;
                 //    mainInstance.saveState();
@@ -210,7 +210,7 @@ Item {
         Item {
           anchors.fill: parent
 
-          property real s: root.uiScale
+          property real s: panel.uiScale
 
           // The inner content has unscaled size parent.size / s so that when
           // scaled by `s` it exactly fits the parent Rectangle without overflow.
@@ -227,11 +227,11 @@ Item {
               id: aiChatViewRef
               anchors.fill: parent
               anchors.margins: Style.marginM
-              visible: root.activeTab === "ai"
-              pluginApi: root.pluginApi
-              mainInstance: root.mainInstance
-              onRequestTabCycleForward: root.cycleTab(false)
-              onRequestTabCycleBackward: root.cycleTab(true)
+              visible: panel.activeTab === "ai"
+              pluginApi: panel.pluginApi
+              mainInstance: panel.mainInstance
+              onRequestTabCycleForward: panel.cycleTab(false)
+              onRequestTabCycleBackward: panel.cycleTab(true)
             }
           }
         }

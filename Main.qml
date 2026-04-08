@@ -68,7 +68,7 @@ Item {
   }
 
   Component.onCompleted: {
-    Logger.i("AssistantPanel", "Plugin initialized");
+    Logger.d("OllamaAssitant", "Plugin initialized");
     // State loading is handled by FileView onLoaded
     ensureCacheDir();
   }
@@ -93,9 +93,9 @@ Item {
     onLoadFailed: function (error) {
       if (error === 2) {
         // File doesn't exist, start fresh
-        Logger.d("AssistantPanel", "No cache file found, starting fresh");
+        Logger.d("OllamaAssitant", "No cache file found, starting fresh");
       } else {
-        Logger.e("AssistantPanel", "Failed to load state cache: " + error);
+        Logger.e("OllamaAssitant", "Failed to load state cache: " + error);
       }
     }
   }
@@ -106,12 +106,12 @@ Item {
     var result = ProviderLogic.processLoadedState(content);
 
     if (!result) {
-      Logger.d("AssistantPanel", "Empty cache file, starting fresh");
+      Logger.d("OllamaAssitant", "Empty cache file, starting fresh");
       return;
     }
 
     if (result.error) {
-      Logger.e("AssistantPanel", "Failed to parse state cache: " + result.error);
+      Logger.e("OllamaAssitant", "Failed to parse state cache: " + result.error);
       return;
     }
 
@@ -119,7 +119,7 @@ Item {
     root.activeTab = result.activeTab;
     root.chatInputText = result.chatInputText;
     root.chatInputCursorPosition = result.chatInputCursorPosition;
-    Logger.d("AssistantPanel", "Loaded " + root.messages.length + " messages from cache");
+    Logger.d("OllamaAssitant", "Loaded " + root.messages.length + " messages from cache");
   }
 
   // Debounced save timer
@@ -155,7 +155,7 @@ Item {
 
       stateCacheFile.setText(dataStr);
     } catch (e) {
-      Logger.e("AssistantPanel", "Failed to save state cache: " + e);
+      Logger.e("OllamaAssitant", "Failed to save state cache: " + e);
     }
   }
 
@@ -176,18 +176,18 @@ Item {
   function clearMessages() {
     root.messages = [];
     saveState();
-    Logger.i("AssistantPanel", "Chat history cleared");
+    Logger.i("OllamaAssitant", "Chat history cleared");
   }
 
   // Send a message to the AI
   function sendMessage(userMessage) {
-    Logger.i("AssistantPanel", "sendMessage called with: " + userMessage);
+    Logger.i("OllamaAssitant", "sendMessage called with: " + userMessage);
     if (!userMessage || userMessage.trim() === "") {
-      Logger.i("AssistantPanel", "sendMessage: empty message, abort");
+      Logger.i("OllamaAssitant", "sendMessage: empty message, abort");
       return;
     }
     if (root.isGenerating) {
-      Logger.i("AssistantPanel", "sendMessage: already generating, abort");
+      Logger.i("OllamaAssitant", "sendMessage: already generating, abort");
       return;
     }
 
@@ -200,12 +200,12 @@ Item {
 
     if (requiresKey && (!apiKey || apiKey.trim() === "")) {
       root.errorMessage = pluginApi?.tr("errors.noApiKey");
-      Logger.e("AssistantPanel", "sendMessage: missing API key");
+      Logger.e("OllamaAssitant", "sendMessage: missing API key");
       ToastService.showError(root.errorMessage);
       return;
     }
 
-    Logger.i("AssistantPanel", "Adding user message and starting generation");
+    Logger.i("OllamaAssitant", "Adding user message and starting generation");
     addMessage("user", userMessage.trim());
 
     root.isGenerating = true;
@@ -214,12 +214,12 @@ Item {
     root.errorMessage = "";
 
     try {
-      Logger.i("AssistantPanel", "Calling sendOpenAIRequest() for " + provider);
+      Logger.i("OllamaAssitant", "Calling sendOpenAIRequest() for " + provider);
       sendOpenAIRequest();
     } catch(error) {
-      Logger.e("AssistantPanel", "Error calling sendOpenAIRequest");
+      Logger.e("OllamaAssitant", "Error calling sendOpenAIRequest");
       root.errorMessage = error.message || "Unknown error";
-      Logger.e("AssistantPanel", "Error: " + root.errorMessage);
+      Logger.e("OllamaAssitant", "Error: " + root.errorMessage);
       root.isGenerating = false;
     }
   }
@@ -280,7 +280,7 @@ Item {
   function stopGeneration() {
     if (!root.isGenerating)
       return;
-    Logger.i("AssistantPanel", "Stopping generation");
+    Logger.i("OllamaAssitant", "Stopping generation");
 
     root.isManuallyStopped = true;
     if (geminiProcess.running)
@@ -326,9 +326,9 @@ Item {
     stderr: StdioCollector {
       onStreamFinished: {
         if (text && text.trim() !== "") {
-          Logger.e("AssistantPanel", "OpenAI stderr: " + text);
+          Logger.e("OllamaAssitant", "OpenAI stderr: " + text);
         } else {
-          Logger.i("AssistantPanel", "OpenAI stderr: (empty)");
+          Logger.i("OllamaAssitant", "OpenAI stderr: (empty)");
         }
       }
     }
@@ -341,7 +341,7 @@ Item {
       if (result.content) {
         root.currentResponse += result.content;
       } else if (result.error) {
-        Logger.e("AssistantPanel", "OpenAI stream error: " + result.error);
+        Logger.e("OllamaAssitant", "OpenAI stream error: " + result.error);
       } else if (result.raw) {
         openaiProcess.buffer += result.raw;
         try {
@@ -390,11 +390,11 @@ Item {
     var history = buildConversationHistory();
     var commandData = ProviderLogic.buildOpenAICommand(openaiBaseUrl, apiKey, model, systemPrompt, history, temperature);
 
-    Logger.i("AssistantPanel", "sendOpenAIRequest: endpoint=" + commandData.url);
+    Logger.i("OllamaAssitant", "sendOpenAIRequest: endpoint=" + commandData.url);
     openaiProcess.buffer = "";
     openaiProcess.command = commandData.args;
 
-    Logger.i("AssistantPanel", "sendOpenAIRequest: starting process");
+    Logger.i("OllamaAssitant", "sendOpenAIRequest: starting process");
     openaiProcess.running = true;
   }
 

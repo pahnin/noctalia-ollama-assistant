@@ -221,7 +221,7 @@ ColumnLayout {
   spacing: Style.marginM
 
   Component.onCompleted: {
-    Logger.i("AssistantPanel", "Settings UI loaded");
+    Logger.i("OllamaAssitant", "Settings UI loaded");
   }
 
   // ==================
@@ -518,7 +518,7 @@ ColumnLayout {
       });
     }
     if (!pluginApi) {
-      Logger.e("AssistantPanel", "Cannot save settings: pluginApi is null");
+      Logger.e("OllamaAssitant", "Cannot save settings: pluginApi is null");
       return;
     }
 
@@ -565,6 +565,6 @@ ColumnLayout {
 
     pluginApi.saveSettings();
 
-    Logger.i("AssistantPanel", "Settings saved successfully");
+    Logger.i("OllamaAssitant", "Settings saved successfully");
   }
 }
