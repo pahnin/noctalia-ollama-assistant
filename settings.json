@@ -1,4 +1,10 @@
 {
+  "maxHistoryLength": 100,
+  "panelDetached": false,
+  "panelPosition": "top",
+  "panelHeightRatio": 0.75,
+  "panelWidth": 802,
+  "scale": 0.96,
   "ai": {
     "provider": "openai_compatible",
     "models": {
@@ -13,11 +19,10 @@
     "openaiBaseUrl": "http://localhost:11434/v1/chat/completions",
     "model": "qwen3.5:9b"
   },
-  "maxHistoryLength": 100,
-  "panelDetached": false,
-  "panelPosition": "top",
-  "panelHeightRatio": 0.8,
-  "panelWidth": 710,
   "attachmentStyle": "connected",
-  "scale": 0.96
+  "translator": {
+    "backend": "google",
+    "deeplApiKey": "",
+    "realTimeTranslation": true
+  }
 }

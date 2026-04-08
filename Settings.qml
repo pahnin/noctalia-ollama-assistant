@@ -28,11 +28,6 @@ ColumnLayout {
   property real editTemperature: pluginApi?.pluginSettings?.ai?.temperature || pluginApi?.manifest?.metadata?.defaultSettings?.ai?.temperature || 0.7
   property string editSystemPrompt: pluginApi?.pluginSettings?.ai?.systemPrompt || pluginApi?.manifest?.metadata?.defaultSettings?.ai?.systemPrompt || ""
 
-  // Translator Settings - Local state
-  property string editTranslatorBackend: pluginApi?.pluginSettings?.translator?.backend || pluginApi?.manifest?.metadata?.defaultSettings?.translator?.backend || "google"
-  property bool editRealTimeTranslation: pluginApi?.pluginSettings?.translator?.realTimeTranslation ?? pluginApi?.manifest?.metadata?.defaultSettings?.translator?.realTimeTranslation ?? true
-  property string editDeeplApiKey: pluginApi?.pluginSettings?.translator?.deeplApiKey || pluginApi?.manifest?.metadata?.defaultSettings?.translator?.deeplApiKey || ""
-
   // General Settings
   property int editMaxHistoryLength: pluginApi?.pluginSettings?.maxHistoryLength || pluginApi?.manifest?.metadata?.defaultSettings?.maxHistoryLength || 100
 
@@ -430,67 +425,6 @@ ColumnLayout {
     Layout.bottomMargin: Style.marginM
   }
 
-  // ==================
-  // Translator Settings Section
-  // ==================
-  NText {
-    text: pluginApi?.tr("settings.translatorSection")
-    pointSize: Style.fontSizeM
-    font.weight: Font.Bold
-    color: Color.mOnSurface
-  }
-
-  // Translator backend
-  NComboBox {
-    Layout.fillWidth: true
-    label: pluginApi?.tr("settings.translatorBackend")
-    description: pluginApi?.tr("settings.translatorBackendDesc")
-    model: [
-      {
-        "key": "google",
-        "name": "Google Translate"
-      },
-      {
-        "key": "deepl",
-        "name": "DeepL"
-      }
-    ]
-    currentKey: root.editTranslatorBackend
-    onSelected: function (key) {
-      root.editTranslatorBackend = key;
-    }
-    defaultValue: "google"
-  }
-
-  // DeepL API key (only for DeepL)
-  NTextInput {
-    Layout.fillWidth: true
-    visible: root.editTranslatorBackend === "deepl"
-    label: pluginApi?.tr("settings.deeplApiKey")
-    description: root.deeplApiKeyManagedByEnv ? (pluginApi?.tr("settings.apiKeyManagedByEnv")) : (pluginApi?.tr("settings.deeplApiKeyDesc"))
-    placeholderText: root.deeplApiKeyManagedByEnv ? (pluginApi?.tr("settings.apiKeyEnvPlaceholder")) : (pluginApi?.tr("settings.apiKeyPlaceholder"))
-    text: root.deeplApiKeyManagedByEnv ? "" : root.editDeeplApiKey
-    enabled: !root.deeplApiKeyManagedByEnv
-    inputMethodHints: Qt.ImhHiddenText
-    onTextChanged: {
-      if (!root.deeplApiKeyManagedByEnv) {
-        root.editDeeplApiKey = text;
-      }
-    }
-  }
-
-  // Real-time translation toggle
-  NToggle {
-    Layout.fillWidth: true
-    label: pluginApi?.tr("settings.realTimeTranslation")
-    description: pluginApi?.tr("settings.realTimeTranslationDesc")
-    checked: root.editRealTimeTranslation
-    onToggled: function (checked) {
-      root.editRealTimeTranslation = checked;
-    }
-    defaultValue: true
-  }
-
   // Save function called by the settings dialog
   function saveSettings() {
     // Sync model for current provider before saving
@@ -546,11 +480,6 @@ ColumnLayout {
     } catch (e) {
       pluginApi.pluginSettings.ai.model = pluginApi.pluginSettings.ai.model || "";
     }
-
-    // Save translator settings
-    pluginApi.pluginSettings.translator.backend = root.editTranslatorBackend;
-    pluginApi.pluginSettings.translator.deeplApiKey = root.editDeeplApiKey;
-    pluginApi.pluginSettings.translator.realTimeTranslation = root.editRealTimeTranslation;
 
     // Save general settings
     pluginApi.pluginSettings.maxHistoryLength = root.editMaxHistoryLength;

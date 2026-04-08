@@ -254,7 +254,7 @@ Item {
       anchors.centerIn: parent
       spacing: Style.marginS
       ToolTip.visible: tabMouseArea.containsMouse
-      ToolTip.delay: 500
+      ToolTip.delay: 750
       ToolTip.text: tabButton.tooltipText
 
       NIcon {
