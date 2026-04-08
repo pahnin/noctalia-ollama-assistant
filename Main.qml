@@ -293,19 +293,6 @@ Item {
     root.currentResponse = "";
   }
 
-  // Build conversation history for API
-  function buildConversationHistory() {
-    var history = [];
-    for (var i = 0; i < root.messages.length; i++) {
-      var msg = root.messages[i];
-      history.push({
-        "role": msg.role,
-        "content": msg.content
-      });
-    }
-    return history;
-  }
-
   // =====================
   // OpenAI API Compatible ( ollama )
   // =====================
@@ -384,12 +371,13 @@ Item {
   }
 
   function sendOpenAIRequest() {
-    var history = buildConversationHistory();
+    var history = root.messages;
     var commandData = ProviderLogic.buildOpenAICommand(openaiBaseUrl, apiKey, model, systemPrompt, history, temperature);
 
     Logger.i("OllamaAssistant", "sendOpenAIRequest: endpoint=" + commandData.url);
     openaiProcess.buffer = "";
     openaiProcess.command = commandData.args;
+    Logger.d("OllamaAssistant", "args=" + commandData.args);
 
     Logger.i("OllamaAssistant", "sendOpenAIRequest: starting process");
     openaiProcess.running = true;

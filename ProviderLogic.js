@@ -16,7 +16,10 @@ function buildOpenAICommand(endpointUrl, apiKey, model, systemPrompt, history, t
 
   // Add conversation history
   for (var i = 0; i < history.length; i++) {
-    messages.push(history[i]);
+    messages.push({
+      role: history[i].role,
+      content: history[i].content
+    });
   }
 
   var payload = {
