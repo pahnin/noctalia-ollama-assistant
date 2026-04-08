@@ -78,7 +78,7 @@ Item {
   // Access main instance
   readonly property var mainInstance: pluginApi?.mainInstance
   property bool isGenerating: mainInstance?.isGenerating
-
+  property var convs: mainInstance?.conversations
 
   Component.onCompleted: {
     Logger.i("OllamaAssistant", "Panel initialized");
@@ -136,47 +136,56 @@ Item {
           flickableDirection: Flickable.HorizontalFlick
           boundsBehavior: Flickable.StopAtBounds
           // interactive: true
-          property real s: panel.uiScale
-
-          ListModel {
-            id: tabsModel
-            // default elements
-            // 1. Current node
-            // 2. new tab button
-            // 3. clear all button
-
-            // new nodes are to be inserted before the new tab button
-            ListElement { idStr: "currentNode"; label: "Current Node"; icon: "sparkles"; active: true }
-            ListElement { idStr: "newNode"; label: "New Tab"; icon: "plus" }
-            ListElement { idStr: "deleteAll"; label: "Clear All"; icon: "trash" }
-          }
 
           Row {
             id: tabRow
             height: implicitHeight
             spacing: Style.marginS
             Repeater {
-              model: tabsModel
+              model: Object.keys(convs)
               id: tabRowRepeater
 
               delegate: TabButton {
-                width: Math.min(implicitWidth * panel.uiScale , 200)
+                width: Math.min(implicitWidth * panel.uiScale, 200)
                 height: 33 * panel.uiScale
-                icon: model.icon
-                label: model.idStr === "currentNode" ? "Chat" : ""
-                isActive: model.active
-                // TODO: currently the state processing stores all the conversations in single messsages history
-                // Need to redesign state management to support multiple conversations and then
-                // implement injecting nodes dynamically into tabsModel and implement switching between conversations
-                // onClicked: {
-                //  panel.activeTab = model.idStr;
-                //  if (mainInstance) {
-                //    mainInstance.activeTab = model.idStr;
-                //    mainInstance.saveState();
-                //  }
-                //}
+
+                icon: "sparkles"
+                label: "Chat " + (Number(modelData) + 1)
+
+                tooltipText: {
+                  var msgs = convs[modelData]
+                  if (!msgs || msgs.length === 0) return "Empty chat"
+                  return msgs[msgs.length - 1].content
+                }
+                isActive: mainInstance.activeConversationIndex === Number(modelData)
+                onClicked: mainInstance.switchConversation(Number(modelData))
               }
             }
+
+            Item {
+              width: Style.marginM
+            }
+
+            TabButton {
+              width: 33 * panel.uiScale
+              height: 33 * panel.uiScale
+              icon: "plus"
+              label: ""
+              tooltipText: "New Chat"
+
+              onClicked: mainInstance.createNewConversation()
+            }
+
+            TabButton {
+              width: 33 * panel.uiScale
+              height: 33 * panel.uiScale
+              icon: "trash"
+              label: ""
+              tooltipText: "Clear Current Chat"
+
+              onClicked: mainInstance.clearMessages()
+            }
+
           }
         }
       }
@@ -230,6 +239,7 @@ Item {
     property string icon: ""
     property string label: ""
     property bool isActive: false
+    property string tooltipText: ""
 
     signal clicked
 
@@ -243,6 +253,9 @@ Item {
       id: tabButtonContent
       anchors.centerIn: parent
       spacing: Style.marginS
+      ToolTip.visible: tabMouseArea.containsMouse
+      ToolTip.delay: 500
+      ToolTip.text: tabButton.tooltipText
 
       NIcon {
         icon: tabButton.icon

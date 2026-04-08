@@ -160,6 +160,33 @@ Item {
     }
   }
 
+  function createNewConversation() {
+      if (!root.conversations) {
+          root.conversations = {};
+      }
+
+      // generate next index
+      var keys = Object.keys(root.conversations);
+      var newIndex = keys.length > 0 ? Math.max(...keys.map(Number)) + 1 : 0;
+
+      root.conversations[newIndex] = [];
+      root.activeConversationIndex = newIndex;
+      root.messages = [];
+
+      saveState();
+  }
+
+  function switchConversation(index) {
+      if (!root.conversations) return;
+
+      if (!root.conversations[index]) {
+          root.conversations[index] = [];
+      }
+
+      root.activeConversationIndex = index;
+      root.messages = root.conversations[index];
+  }
+
   // Add a message to the chat
   function addMessage(role, content) {
     var newMessage = {
