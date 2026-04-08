@@ -14,6 +14,8 @@ Item {
   property string _responseBuffer: ""
 
   // AI Chat state
+  property var conversations: {}
+  property int activeConversationIndex: 0
   property var messages: []
   property bool isGenerating: false
   property string currentResponse: ""
@@ -60,7 +62,7 @@ Item {
     var url = pluginApi?.pluginSettings?.ai?.openaiBaseUrl || "";
     if (url === "")
       if (openaiLocal)
-        return "http://localhost:5001/v1/chat/completions";
+        return "http://localhost:11434/v1/chat/completions";
       else
         return "https://api.openai.com/v1/chat/completions";
     return url;
@@ -114,7 +116,9 @@ Item {
       return;
     }
 
-    root.messages = result.messages;
+    root.conversations = result.conversations;
+    root.activeConversationIndex = result.activeConversationIndex;
+    root.messages = root.conversations[root.activeConversationIndex] || [];
     root.chatInputText = result.chatInputText;
     root.chatInputCursorPosition = result.chatInputCursorPosition;
     Logger.d("OllamaAssistant", "Loaded " + root.messages.length + " messages from cache");
@@ -144,8 +148,8 @@ Item {
 
       var maxHistory = pluginApi?.pluginSettings?.maxHistoryLength || 100;
       var dataStr = ProviderLogic.prepareStateForSave(
-        root.messages,
-        maxHistory,
+        root.conversations,
+        root.activeConversationIndex,
         root.chatInputText,
         root.chatInputCursorPosition
       );
@@ -165,6 +169,10 @@ Item {
       "timestamp": new Date().toISOString()
     };
     root.messages = [...root.messages, newMessage];
+    if (!root.conversations) {
+        root.conversations = {};
+    }
+    root.conversations[root.activeConversationIndex] = root.messages;
     saveState();
     return newMessage;
   }
@@ -172,6 +180,7 @@ Item {
   // Clear chat history
   function clearMessages() {
     root.messages = [];
+    root.conversations[root.activeConversationIndex] = [];
     saveState();
     Logger.i("OllamaAssistant", "Chat history cleared");
   }
@@ -240,6 +249,7 @@ Item {
 
     // Truncate history to this message (exclusive)
     root.messages = root.messages.slice(0, index);
+    root.conversations[root.activeConversationIndex] = root.conversations[root.activeConversationIndex].slice(0, index);
 
     // Add the updated message as a new user message
     sendMessage(newContent);
