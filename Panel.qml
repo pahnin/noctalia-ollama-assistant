@@ -23,22 +23,7 @@ Item {
   }
   // Cycle tabs programmatically (called by child views when Tab is pressed)
   function cycleTab(backwards) {
-    var tabs = ["ai", "translator"];
-    var idx = tabs.indexOf(activeTab);
-    if (idx === -1)
-      return;
-    var nextIdx;
-    if (backwards) {
-      nextIdx = (idx - 1 + tabs.length) % tabs.length;
-    } else {
-      nextIdx = (idx + 1) % tabs.length;
-    }
-    activeTab = tabs[nextIdx];
-    // Sync to Main instance and save to cache
-    if (mainInstance) {
-      mainInstance.activeTab = activeTab;
-      mainInstance.saveState();
-    }
+    // TODO: re implement once conversations are implemented
   }
 
   property var pluginApi: null
@@ -92,12 +77,12 @@ Item {
 
   // Access main instance
   readonly property var mainInstance: pluginApi?.mainInstance
+  property bool isGenerating: mainInstance?.isGenerating
 
-  // Tab state - use Main instance's activeTab (cached state)
-  property string activeTab: mainInstance?.activeTab || "ai"
 
   Component.onCompleted: {
-    Logger.i("OllamaAssitant", "Panel initialized");
+    Logger.i("OllamaAssistant", "Panel initialized");
+    Logger.d("OllamaAssistant", "main instance: ", mainInstance);
   }
 
   // Focus input when panel is shown and AI tab is active
@@ -110,7 +95,7 @@ Item {
     }
   }
 
-  onActiveTabChanged: {
+  onIsGeneratingChanged: {
     if (visible) {
       Qt.callLater(function () {
         aiChatViewRef.focusInput();
@@ -161,7 +146,7 @@ Item {
             // 3. clear all button
 
             // new nodes are to be inserted before the new tab button
-            ListElement { idStr: "currentNode"; label: "Current Node"; icon: "sparkles" }
+            ListElement { idStr: "currentNode"; label: "Current Node"; icon: "sparkles"; active: true }
             ListElement { idStr: "newNode"; label: "New Tab"; icon: "plus" }
             ListElement { idStr: "deleteAll"; label: "Clear All"; icon: "trash" }
           }
@@ -179,7 +164,7 @@ Item {
                 height: 33 * panel.uiScale
                 icon: model.icon
                 label: model.idStr === "currentNode" ? "Chat" : ""
-                isActive: panel.activeTab === model.idStr
+                isActive: model.active
                 // TODO: currently the state processing stores all the conversations in single messsages history
                 // Need to redesign state management to support multiple conversations and then
                 // implement injecting nodes dynamically into tabsModel and implement switching between conversations
@@ -227,7 +212,6 @@ Item {
               id: aiChatViewRef
               anchors.fill: parent
               anchors.margins: Style.marginM
-              visible: panel.activeTab === "ai"
               pluginApi: panel.pluginApi
               mainInstance: panel.mainInstance
               onRequestTabCycleForward: panel.cycleTab(false)

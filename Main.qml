@@ -20,11 +20,10 @@ Item {
   property string errorMessage: ""
   property bool isManuallyStopped: false
 
-  // Cache directory for state (messages, activeTab) - use global noctalia cache
+  // Cache directory for state (messages) - use global noctalia cache
   readonly property string cacheDir: typeof Settings !== 'undefined' && Settings.cacheDir ? Settings.cacheDir + "plugins/ollama-assistant/" : ""
   readonly property string stateCachePath: cacheDir + "state.json"
 
-  property string activeTab: "ai"  // UI state - persisted to cache
   property string chatInputText: "" // Chat input state - persisted to cache
   property int chatInputCursorPosition: 0 // Chat input cursor position - persisted to cache
 
@@ -68,7 +67,7 @@ Item {
   }
 
   Component.onCompleted: {
-    Logger.d("OllamaAssitant", "Plugin initialized");
+    Logger.d("OllamaAssistant", "Plugin initialized");
     // State loading is handled by FileView onLoaded
     ensureCacheDir();
   }
@@ -80,7 +79,7 @@ Item {
     }
   }
 
-  // FileView for state cache (messages, activeTab)
+  // FileView for state cache (messages)
   FileView {
     id: stateCacheFile
     path: root.stateCachePath
@@ -93,9 +92,9 @@ Item {
     onLoadFailed: function (error) {
       if (error === 2) {
         // File doesn't exist, start fresh
-        Logger.d("OllamaAssitant", "No cache file found, starting fresh");
+        Logger.d("OllamaAssistant", "No cache file found, starting fresh");
       } else {
-        Logger.e("OllamaAssitant", "Failed to load state cache: " + error);
+        Logger.e("OllamaAssistant", "Failed to load state cache: " + error);
       }
     }
   }
@@ -106,20 +105,19 @@ Item {
     var result = ProviderLogic.processLoadedState(content);
 
     if (!result) {
-      Logger.d("OllamaAssitant", "Empty cache file, starting fresh");
+      Logger.d("OllamaAssistant", "Empty cache file, starting fresh");
       return;
     }
 
     if (result.error) {
-      Logger.e("OllamaAssitant", "Failed to parse state cache: " + result.error);
+      Logger.e("OllamaAssistant", "Failed to parse state cache: " + result.error);
       return;
     }
 
     root.messages = result.messages;
-    root.activeTab = result.activeTab;
     root.chatInputText = result.chatInputText;
     root.chatInputCursorPosition = result.chatInputCursorPosition;
-    Logger.d("OllamaAssitant", "Loaded " + root.messages.length + " messages from cache");
+    Logger.d("OllamaAssistant", "Loaded " + root.messages.length + " messages from cache");
   }
 
   // Debounced save timer
@@ -147,7 +145,6 @@ Item {
       var maxHistory = pluginApi?.pluginSettings?.maxHistoryLength || 100;
       var dataStr = ProviderLogic.prepareStateForSave(
         root.messages,
-        root.activeTab,
         maxHistory,
         root.chatInputText,
         root.chatInputCursorPosition
@@ -155,7 +152,7 @@ Item {
 
       stateCacheFile.setText(dataStr);
     } catch (e) {
-      Logger.e("OllamaAssitant", "Failed to save state cache: " + e);
+      Logger.e("OllamaAssistant", "Failed to save state cache: " + e);
     }
   }
 
@@ -176,18 +173,18 @@ Item {
   function clearMessages() {
     root.messages = [];
     saveState();
-    Logger.i("OllamaAssitant", "Chat history cleared");
+    Logger.i("OllamaAssistant", "Chat history cleared");
   }
 
   // Send a message to the AI
   function sendMessage(userMessage) {
-    Logger.i("OllamaAssitant", "sendMessage called with: " + userMessage);
+    Logger.i("OllamaAssistant", "sendMessage called with: " + userMessage);
     if (!userMessage || userMessage.trim() === "") {
-      Logger.i("OllamaAssitant", "sendMessage: empty message, abort");
+      Logger.i("OllamaAssistant", "sendMessage: empty message, abort");
       return;
     }
     if (root.isGenerating) {
-      Logger.i("OllamaAssitant", "sendMessage: already generating, abort");
+      Logger.i("OllamaAssistant", "sendMessage: already generating, abort");
       return;
     }
 
@@ -200,12 +197,12 @@ Item {
 
     if (requiresKey && (!apiKey || apiKey.trim() === "")) {
       root.errorMessage = pluginApi?.tr("errors.noApiKey");
-      Logger.e("OllamaAssitant", "sendMessage: missing API key");
+      Logger.e("OllamaAssistant", "sendMessage: missing API key");
       ToastService.showError(root.errorMessage);
       return;
     }
 
-    Logger.i("OllamaAssitant", "Adding user message and starting generation");
+    Logger.i("OllamaAssistant", "Adding user message and starting generation");
     addMessage("user", userMessage.trim());
 
     root.isGenerating = true;
@@ -214,12 +211,12 @@ Item {
     root.errorMessage = "";
 
     try {
-      Logger.i("OllamaAssitant", "Calling sendOpenAIRequest() for " + provider);
+      Logger.i("OllamaAssistant", "Calling sendOpenAIRequest() for " + provider);
       sendOpenAIRequest();
     } catch(error) {
-      Logger.e("OllamaAssitant", "Error calling sendOpenAIRequest");
+      Logger.e("OllamaAssistant", "Error calling sendOpenAIRequest");
       root.errorMessage = error.message || "Unknown error";
-      Logger.e("OllamaAssitant", "Error: " + root.errorMessage);
+      Logger.e("OllamaAssistant", "Error: " + root.errorMessage);
       root.isGenerating = false;
     }
   }
@@ -280,7 +277,7 @@ Item {
   function stopGeneration() {
     if (!root.isGenerating)
       return;
-    Logger.i("OllamaAssitant", "Stopping generation");
+    Logger.i("OllamaAssistant", "Stopping generation");
 
     root.isManuallyStopped = true;
     if (geminiProcess.running)
@@ -326,9 +323,9 @@ Item {
     stderr: StdioCollector {
       onStreamFinished: {
         if (text && text.trim() !== "") {
-          Logger.e("OllamaAssitant", "OpenAI stderr: " + text);
+          Logger.e("OllamaAssistant", "OpenAI stderr: " + text);
         } else {
-          Logger.i("OllamaAssitant", "OpenAI stderr: (empty)");
+          Logger.i("OllamaAssistant", "OpenAI stream finished");
         }
       }
     }
@@ -341,7 +338,7 @@ Item {
       if (result.content) {
         root.currentResponse += result.content;
       } else if (result.error) {
-        Logger.e("OllamaAssitant", "OpenAI stream error: " + result.error);
+        Logger.e("OllamaAssistant", "OpenAI stream error: " + result.error);
       } else if (result.raw) {
         openaiProcess.buffer += result.raw;
         try {
@@ -390,11 +387,11 @@ Item {
     var history = buildConversationHistory();
     var commandData = ProviderLogic.buildOpenAICommand(openaiBaseUrl, apiKey, model, systemPrompt, history, temperature);
 
-    Logger.i("OllamaAssitant", "sendOpenAIRequest: endpoint=" + commandData.url);
+    Logger.i("OllamaAssistant", "sendOpenAIRequest: endpoint=" + commandData.url);
     openaiProcess.buffer = "";
     openaiProcess.command = commandData.args;
 
-    Logger.i("OllamaAssitant", "sendOpenAIRequest: starting process");
+    Logger.i("OllamaAssistant", "sendOpenAIRequest: starting process");
     openaiProcess.running = true;
   }
 
