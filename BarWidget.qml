@@ -126,7 +126,7 @@ Item {
     onClicked: function (mouse) {
       if (mouse.button === Qt.LeftButton) {
         if (pluginApi) {
-          pluginApi.openPanel(root.screen, root);
+          pluginApi.openPanel(root.screen);
         }
       } else if (mouse.button === Qt.RightButton) {
         PanelService.showContextMenu(contextMenu, root, screen);

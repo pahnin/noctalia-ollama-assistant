@@ -67,41 +67,16 @@ ColumnLayout {
     description: pluginApi?.tr("settings.panelDetachedDesc")
     checked: root.editPanelDetached
     onToggled: function (checked) {
-      root.editPanelDetached = checked;
-      // Reset position if invalid for new mode
-      if (checked) {
-        // Switching to Detached: "top" and "bottom" become invalid -> default to "right"
-        if (root.editPanelPosition === "top" || root.editPanelPosition === "bottom") {
-          root.editPanelPosition = "right";
-        }
-      } else {
-        // Switching to Attached: "center" becomes invalid -> default to "right"
-        if (root.editPanelPosition === "center") {
-          root.editPanelPosition = "right";
-        }
-      }
+      root.editPanelDetached = checked
     }
-    defaultValue: true
+    defaultValue: false
   }
 
   NComboBox {
     Layout.fillWidth: true
     label: pluginApi?.tr("settings.panelPosition")
     description: pluginApi?.tr("settings.panelPositionDesc")
-    model: root.editPanelDetached ? [
-      {
-        "key": "left",
-        "name": pluginApi?.tr("settings.panelPositionLeft")
-      },
-      {
-        "key": "center",
-        "name": pluginApi?.tr("settings.panelPositionCenter")
-      },
-      {
-        "key": "right",
-        "name": pluginApi?.tr("settings.panelPositionRight")
-      }
-    ] : [
+    model:  [
       {
         "key": "left",
         "name": pluginApi?.tr("settings.panelPositionLeft")
@@ -123,29 +98,7 @@ ColumnLayout {
     onSelected: function (key) {
       root.editPanelPosition = key;
     }
-    defaultValue: "right"
-  }
-
-  NComboBox {
-    Layout.fillWidth: true
-    visible: !root.editPanelDetached
-    label: pluginApi?.tr("settings.attachmentStyle")
-    description: pluginApi?.tr("settings.attachmentStyleDesc")
-    model: [
-      {
-        "key": "connected",
-        "name": pluginApi?.tr("settings.attachConnected")
-      },
-      {
-        "key": "floating",
-        "name": pluginApi?.tr("settings.attachFloating")
-      }
-    ]
-    currentKey: root.editAttachmentStyle
-    onSelected: function (key) {
-      root.editAttachmentStyle = key;
-    }
-    defaultValue: "connected"
+    defaultValue: "bottom"
   }
 
   ColumnLayout {

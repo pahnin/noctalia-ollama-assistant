@@ -30,40 +30,13 @@ Item {
 
   // SmartPanel properties for detachment and anchoring
   readonly property var geometryPlaceholder: panelContainer
-  readonly property string _panelPosition: (pluginApi?.pluginSettings?.panelPosition ?? pluginApi?.manifest?.metadata?.panel?.defaultPosition ?? "right")
+  readonly property string panelPosition: (pluginApi?.pluginSettings?.panelPosition ?? pluginApi?.manifest?.metadata?.panel?.defaultPosition ?? "right")
   readonly property bool _detached: pluginApi?.pluginSettings?.panelDetached ?? pluginApi?.manifest?.metadata?.panel?.detached ?? true
-  readonly property string _attachmentStyle: pluginApi?.pluginSettings?.attachmentStyle || "connected"
-  readonly property bool _isFloatingAttached: !_detached && _attachmentStyle === "floating"
 
   // Standard attach logic: Attach if not detached.
   // With universal floating mode, we always use SmartPanel's attach logic if not in detached mode.
   // The specific anchoring (connected vs floating) is handled below.
   readonly property bool allowAttach: !_detached
-
-  // Anchor Logic Breakdown:
-  // 1. Detached: Only Left/Center/Right supported. No Top/Bottom anchors.
-  // 2. Attached Connected: Standard anchors on the respective side.
-  // 3. Attached Floating:
-  //    - Left/Right: Anchor to side + Vertical Center (Drawer).
-  //    - Top/Bottom: Anchor to edge + Horizontal Center (Drawer).
-
-  readonly property bool panelAnchorRight: !_detached ? _panelPosition === "right" : (_panelPosition === "right")
-  readonly property bool panelAnchorLeft: !_detached ? _panelPosition === "left" : (_panelPosition === "left")
-
-  // Horizontal Center:
-  // - Detached Center (Standard)
-  // - Attached Floating Top or Bottom (Vertical Drawer)
-  readonly property bool panelAnchorHorizontalCenter: (_detached && _panelPosition === "center") || (_isFloatingAttached && (_panelPosition === "top" || _panelPosition === "bottom"))
-
-  // Vertical Center:
-  // - Detached Left/Right (Standard Detached Side behavior, if defined by shell)
-  // - Attached Floating Left or Right (Side Drawer)
-  readonly property bool panelAnchorVerticalCenter: _detached || (_isFloatingAttached && (_panelPosition === "left" || _panelPosition === "right"))
-
-  // Top/Bottom:
-  // - Only valid in Attached mode
-  readonly property bool panelAnchorTop: !_detached && _panelPosition === "top"
-  readonly property bool panelAnchorBottom: !_detached && _panelPosition === "bottom"
 
   property int _panelWidth: pluginApi?.pluginSettings?.panelWidth ?? 520
   property real _panelHeightRatio: pluginApi?.pluginSettings?.panelHeightRatio ?? pluginApi?.manifest?.metadata?.panel?.defaultHeightRatio ?? 0.85
@@ -73,16 +46,24 @@ Item {
   // Plugin UI scale (per-plugin setting)
   property real uiScale: pluginApi?.pluginSettings?.scale ?? pluginApi?.manifest?.metadata?.defaultSettings?.scale ?? 1
 
-  anchors.fill: parent
-
   // Access main instance
   readonly property var mainInstance: pluginApi?.mainInstance
   property bool isGenerating: mainInstance?.isGenerating
   property var convs: mainInstance?.conversations
 
+  // Calculate anchoring based on position
+  readonly property bool panelAnchorTop: panelPosition.startsWith("top")
+  readonly property bool panelAnchorBottom: panelPosition.startsWith("bottom")
+  readonly property bool panelAnchorLeft: panelPosition.includes("left") || panelPosition === "left"
+  readonly property bool panelAnchorRight: panelPosition.includes("right") || panelPosition === "right"
+  readonly property bool panelAnchorHCenter: panelPosition === "top" || panelPosition === "bottom"
+  readonly property bool panelAnchorVCenter: panelPosition === "left" || panelPosition === "right"
+
+
   Component.onCompleted: {
     Logger.i("OllamaAssistant", "Panel initialized");
     Logger.d("OllamaAssistant", "main instance: ", mainInstance);
+    Logger.d("OllamaAssistant", "Panel position: ", panelPosition);
   }
 
   // Focus input when panel is shown and AI tab is active
@@ -108,12 +89,6 @@ Item {
     width: contentPreferredWidth
     height: contentPreferredHeight
     color: "transparent"
-    // Center mode: use anchors only
-    anchors.horizontalCenter: (_detached && _panelPosition === "center" && parent) ? parent.horizontalCenter : undefined
-    anchors.verticalCenter: (_detached && _panelPosition === "center" && parent) ? parent.verticalCenter : undefined
-    // Left/right mode: no anchors, only x/y
-    // ...no horizontal offset logic...
-    y: (_detached && (_panelPosition === "left" || _panelPosition === "right")) ? (panel.height - contentPreferredHeight) / 2 : 0
 
     ColumnLayout {
       anchors.fill: parent
