@@ -21,6 +21,7 @@ Item {
   property string currentResponse: ""
   property string errorMessage: ""
   property bool isManuallyStopped: false
+  property int requestConversationIndex: -1
 
   // Cache directory for state (messages) - use global noctalia cache
   readonly property string cacheDir: typeof Settings !== 'undefined' && Settings.cacheDir ? Settings.cacheDir + "plugins/ollama-assistant/" : ""
@@ -168,8 +169,10 @@ Item {
       // generate next index
       var keys = Object.keys(root.conversations);
       var newIndex = keys.length > 0 ? Math.max(...keys.map(Number)) + 1 : 0;
+      var updated = Object.assign({}, root.conversations);
+      updated[newIndex] = [];
 
-      root.conversations[newIndex] = [];
+      root.conversations = updated;
       root.activeConversationIndex = newIndex;
       root.messages = [];
 
@@ -195,11 +198,21 @@ Item {
       "content": content,
       "timestamp": new Date().toISOString()
     };
-    root.messages = [...root.messages, newMessage];
+
     if (!root.conversations) {
         root.conversations = {};
     }
-    root.conversations[root.activeConversationIndex] = root.messages;
+    if( root.requestConversationIndex > -1) {
+      var messagesCopy = root.conversations[root.requestConversationIndex];
+      messagesCopy = [...messagesCopy, newMessage];
+      root.conversations[root.requestConversationIndex] = messagesCopy;
+    } else {
+      var messagesCopy = root.conversations[root.activeConversationIndex] || [];
+      messagesCopy = [...messagesCopy, newMessage];
+      root.conversations[root.activeConversationIndex] = messagesCopy;
+      root.messages = root.conversations[root.activeConversationIndex];
+    }
+
     saveState();
     return newMessage;
   }
@@ -401,6 +414,7 @@ Item {
       }
       root.chatInputText = ""; // Ensure input is cleared after successful generation
       root.chatInputCursorPosition = 0;
+      root.requestConversationIndex = -1;
       root.saveState();
 
       openaiProcess.buffer = "";
@@ -408,6 +422,7 @@ Item {
   }
 
   function sendOpenAIRequest() {
+    root.requestConversationIndex = root.activeConversationIndex;
     var history = root.messages;
     var commandData = ProviderLogic.buildOpenAICommand(openaiBaseUrl, apiKey, model, systemPrompt, history, temperature);
 

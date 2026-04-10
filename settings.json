@@ -1,9 +1,9 @@
 {
   "maxHistoryLength": 100,
-  "panelDetached": true,
-  "panelPosition": "right",
-  "panelHeightRatio": 0.75,
-  "panelWidth": 802,
+  "panelDetached": false,
+  "panelPosition": "bottom",
+  "panelHeightRatio": 0.7,
+  "panelWidth": 898,
   "scale": 0.96,
   "ai": {
     "provider": "openai_compatible",

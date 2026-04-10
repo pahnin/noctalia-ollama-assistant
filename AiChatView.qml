@@ -18,6 +18,8 @@ Item {
   // State from main instance
   readonly property var messages: mainInstance?.messages || []
   readonly property bool isGenerating: mainInstance?.isGenerating || false
+  readonly property int requestConversationIndex: mainInstance?.requestConversationIndex
+  readonly property int activeConversationIndex: mainInstance?.activeConversationIndex
   readonly property string currentResponse: mainInstance?.currentResponse || ""
   readonly property string errorMessage: mainInstance?.errorMessage || ""
   property string initialInputText: mainInstance?.chatInputText || ""
@@ -238,7 +240,7 @@ Item {
           MessageBubble {
             id: streamingBubble
             width: messageColumn.width
-            visible: isGenerating && currentResponse.trim() !== ""
+            visible: ( requestConversationIndex === activeConversationIndex ) && isGenerating && currentResponse.trim() !== ""
             pluginApi: root.pluginApi
             message: ({
                 "id": "streaming",
