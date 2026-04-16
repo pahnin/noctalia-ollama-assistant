@@ -190,6 +190,31 @@ Item {
       root.messages = root.conversations[index];
   }
 
+  // navigation functions
+  function tabForward() {
+    if (!root.conversations || root.activeConversationIndex === -1)
+      return;
+
+    var indices = Object.keys(root.conversations).map(Number);
+    if (indices.length === 0)
+      return;
+
+    var newIndex = (root.activeConversationIndex + 1) % indices.length;
+    switchConversation(indices[newIndex]);
+  }
+
+  function tabBackward() {
+    if (!root.conversations || root.activeConversationIndex === -1)
+      return;
+
+    var indices = Object.keys(root.conversations).map(Number);
+    if (indices.length === 0)
+      return;
+
+    var newIndex = (root.activeConversationIndex - 1 + indices.length) % indices.length;
+    switchConversation(indices[newIndex]);
+  }
+
   // Add a message to the chat
   function addMessage(role, content) {
     var newMessage = {

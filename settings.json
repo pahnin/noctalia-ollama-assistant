@@ -2,27 +2,26 @@
   "maxHistoryLength": 100,
   "panelDetached": false,
   "panelPosition": "bottom",
-  "panelHeightRatio": 0.7,
-  "panelWidth": 898,
-  "scale": 0.96,
+  "panelHeightRatio": 0.75,
+  "panelWidth": 928,
+  "scale": 1,
   "ai": {
     "provider": "openai_compatible",
-    "models": {
-      "openai_compatible": "qwen3.5:9b"
-    },
+    "model": "qwen3.5:9b",
     "apiKeys": {
+      "openai": "",
       "openai_compatible": ""
     },
     "temperature": 0.7,
-    "systemPrompt": "You are a helpful assistant integrated into a Linux desktop shell. Be concise and helpful.",
+    "systemPrompt": "You are a helpful assistant integrated into a Linux deskto. Be concise and helpful.",
+    "maxHistoryLength": 100,
+    "models": {
+      "openai": "qwen3.5:9b",
+      "openai_compatible": "qwen3.5:9b"
+    },
     "openaiLocal": true,
-    "openaiBaseUrl": "http://localhost:11434/v1/chat/completions",
-    "model": "qwen3.5:9b"
+    "openaiBaseUrl": "http://localhost:11434/v1/chat/completions"
   },
-  "attachmentStyle": "connected",
-  "translator": {
-    "backend": "google",
-    "deeplApiKey": "",
-    "realTimeTranslation": true
-  }
+  "translator": {},
+  "attachmentStyle": "connected"
 }

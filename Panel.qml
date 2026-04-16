@@ -23,7 +23,11 @@ Item {
   }
   // Cycle tabs programmatically (called by child views when Tab is pressed)
   function cycleTab(backwards) {
-    // TODO: re implement once conversations are implemented
+    if(backwards) {
+      mainInstance.tabBackward();
+    } else {
+      mainInstance.tabForward();
+    }
   }
 
   property var pluginApi: null
