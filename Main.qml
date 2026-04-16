@@ -31,29 +31,21 @@ Item {
   property int chatInputCursorPosition: 0 // Chat input cursor position - persisted to cache
 
   // Provider configurations
-  readonly property var providers: ({
-      [Constants.Providers.OPENAI_COMPATIBLE]: {
-        "name": "OpenAI Compatible",
-        "defaultModel": "qwen3.5:9b",
-        // Endpoint is dynamic based on settings (openaiBaseUrl)
-        "endpoint": ""
-      }
-    })
-
-  // Settings accessors
-  readonly property string provider: pluginApi?.pluginSettings?.ai?.provider
-  // Prefer per-provider mapping `ai.models[provider]` (if non-empty), fall back to provider default
-  readonly property string model: {
-    var saved = pluginApi?.pluginSettings?.ai?.models?.[provider];
-    if (saved !== undefined && saved !== "")
-      return saved;
-    return providers[provider]?.defaultModel || "";
+  readonly property var provider: {
+    "name": "OpenAI Compatible",
+    "defaultModel": "qwen3.5:9b",
+    // Endpoint is dynamic based on settings (openaiBaseUrl)
+    "endpoint": ""
   }
 
-  readonly property string envApiKey: ""
-  readonly property string settingsApiKey: (pluginApi?.pluginSettings?.ai?.apiKeys && pluginApi.pluginSettings.ai.apiKeys[provider]) || ""
-  readonly property string apiKey: envApiKey !== "" ? envApiKey : settingsApiKey
-  readonly property bool apiKeyManagedByEnv: envApiKey !== ""
+  readonly property string model: {
+    var saved = pluginApi?.pluginSettings?.ai?.model;
+    if (saved !== undefined && saved !== "")
+      return saved;
+    return provider?.defaultModel || "";
+  }
+
+  readonly property string apiKey: pluginApi?.pluginSettings?.ai?.apiKey || ""
 
   // OpenAI Compatible Settings
   readonly property string systemPrompt: pluginApi?.pluginSettings?.ai?.systemPrompt || ""
@@ -105,6 +97,7 @@ Item {
   // Load state from cache file
   function loadStateFromCache() {
     var content = stateCacheFile.text();
+    Logger.d("OllamaAssistant", "before calling processLoadedState");
     var result = ProviderLogic.processLoadedState(content);
 
     if (!result) {
@@ -265,7 +258,7 @@ Item {
     // Check API key for non-local providers
     // For OpenAI Compatible, check apiKey only if NOT local
     var requiresKey = true;
-    if (provider === Constants.Providers.OPENAI_COMPATIBLE && openaiLocal) {
+    if (openaiLocal) {
       requiresKey = false;
     }
 
@@ -355,8 +348,6 @@ Item {
     Logger.i("OllamaAssistant", "Stopping generation");
 
     root.isManuallyStopped = true;
-    if (geminiProcess.running)
-      geminiProcess.running = false;
     if (openaiProcess.running)
       openaiProcess.running = false;
 
@@ -425,7 +416,7 @@ Item {
 
       if (exitCode !== 0 && root.currentResponse === "") {
         if (root.errorMessage === "") {
-          if (provider === Constants.Providers.OPENAI_COMPATIBLE && openaiLocal) {
+          if (openaiLocal) {
             root.errorMessage = pluginApi?.tr("errors.localNotRunning");
           } else {
             root.errorMessage = pluginApi?.tr("errors.requestFailed");
@@ -509,29 +500,10 @@ Item {
       }
     }
 
-    function setProvider(providerName: string) {
-      if (pluginApi && root.providers[providerName]) {
-        pluginApi.pluginSettings.ai.provider = providerName;
-        pluginApi.saveSettings();
-        ToastService.showNotice(pluginApi?.tr("toast.providerChanged") + " " + root.providers[providerName].name);
-      }
-    }
 
     function setModel(modelName: string) {
       if (pluginApi && modelName) {
-        // Save both legacy `model` and per-provider `models[provider]` for compatibility
-        if (!pluginApi.pluginSettings.ai)
-          pluginApi.pluginSettings.ai = {};
         pluginApi.pluginSettings.ai.model = modelName;
-        try {
-          var existing = pluginApi.pluginSettings.ai.models || {};
-          existing[pluginApi.pluginSettings.ai.provider || provider] = modelName;
-          pluginApi.pluginSettings.ai.models = existing;
-        } catch (e) {
-          pluginApi.pluginSettings.ai.models = {};
-        }
-        pluginApi.saveSettings();
-        ToastService.showNotice(pluginApi?.tr("toast.modelChanged") + " " + modelName);
       }
     }
   }

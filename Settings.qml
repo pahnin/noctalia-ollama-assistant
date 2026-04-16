@@ -13,18 +13,10 @@ ColumnLayout {
   property var pluginApi: null
 
   // AI Settings - Local state
-  property string editProvider: pluginApi?.pluginSettings?.ai?.provider || pluginApi?.manifest?.metadata?.defaultSettings?.ai?.provider || Constants.Providers.GOOGLE
-  property var editModels: pluginApi?.pluginSettings?.ai?.models || {}
-  property var editApiKeys: pluginApi?.pluginSettings?.ai?.apiKeys || {}
-  // Use per-provider model if configured (and non-empty), else return empty to show placeholder
-  property string editModel: {
-    var saved = editModels[editProvider];
-    if (saved !== undefined && saved !== "")
-      return saved;
-    return "";  // Empty = use default (shown in placeholder)
-  }
-
-  property string editApiKey: editApiKeys[editProvider] !== undefined ? editApiKeys[editProvider] : pluginApi?.manifest?.metadata?.defaultSettings?.ai?.apiKey || ""
+  property var editModel: pluginApi?.pluginSettings?.ai?.model || ""
+  property string editApiKey: pluginApi?.pluginSettings?.ai?.apiKey
+    || pluginApi?.manifest?.metadata?.defaultSettings?.ai?.apiKey
+    || ""
   property real editTemperature: pluginApi?.pluginSettings?.ai?.temperature || pluginApi?.manifest?.metadata?.defaultSettings?.ai?.temperature || 0.7
   property string editSystemPrompt: pluginApi?.pluginSettings?.ai?.systemPrompt || pluginApi?.manifest?.metadata?.defaultSettings?.ai?.systemPrompt || ""
 
@@ -43,14 +35,6 @@ ColumnLayout {
   property bool editOpenAiLocal: pluginApi?.pluginSettings?.ai?.openaiLocal ?? false
   property string editOpenAiBaseUrl: pluginApi?.pluginSettings?.ai?.openaiBaseUrl || "https://api.openai.com/v1/chat/completions"
 
-  // Environment variable API keys - check if managed by env
-  readonly property var envApiKeys: ({
-      [Constants.Providers.GOOGLE]: Quickshell.env("NOCTALIA_AP_GOOGLE_API_KEY") || "",
-      [Constants.Providers.OPENAI_COMPATIBLE]: Quickshell.env("NOCTALIA_AP_OPENAI_COMPATIBLE_API_KEY") || ""
-    })
-  readonly property bool apiKeyManagedByEnv: (envApiKeys[editProvider] || "") !== ""
-  readonly property string envDeeplApiKey: Quickshell.env("NOCTALIA_AP_DEEPL_API_KEY") || ""
-  readonly property bool deeplApiKeyManagedByEnv: envDeeplApiKey !== ""
   // ==================
   // Panel Settings Section
   // ==================
@@ -149,22 +133,13 @@ ColumnLayout {
   }
 
   // Provider configurations
-  readonly property var providers: ({
-      [Constants.Providers.GOOGLE]: {
-        "name": "Google Gemini",
-        "defaultModel": "gemini-2.5-flash",
-        "requiresKey": true,
-        "keyUrl": "https://aistudio.google.com/app/apikey"
-      },
-      [Constants.Providers.OPENAI_COMPATIBLE]: {
-        "name": "OpenAI Compatible",
-        // Default to GPT-4o-mini but this is purely a placeholder as it depends on the actual backend
-        "defaultModel": "gpt-4o-mini",
-        // requiresKey is dynamic based on "Local" toggle, handled in logic below
-        "requiresKey": true,
-        "keyUrl": ""
-      }
-    })
+  readonly property var provider: {
+    "name": "OpenAI Compatible",
+    "defaultModel": "qwen3.5:9b",
+    // requiresKey is dynamic based on "Local" toggle, handled in logic below
+    "requiresKey": true,
+    "keyUrl": ""
+  }
 
   spacing: Style.marginM
 
@@ -182,32 +157,10 @@ ColumnLayout {
     color: Color.mOnSurface
   }
 
-  // Provider selection
-  NComboBox {
-    Layout.fillWidth: true
-    label: pluginApi?.tr("settings.provider")
-    description: pluginApi?.tr("settings.providerDesc")
-    model: [
-      {
-        "key": Constants.Providers.GOOGLE,
-        "name": "Google Gemini"
-      },
-      {
-        "key": Constants.Providers.OPENAI_COMPATIBLE,
-        "name": "OpenAI Compatible"
-      }
-    ]
-    currentKey: root.editProvider
-    onSelected: function (key) {
-      root.editProvider = key;
-    }
-    defaultValue: Constants.Providers.GOOGLE
-  }
 
   // OpenAI Compatible Extras
   ColumnLayout {
     Layout.fillWidth: true
-    visible: root.editProvider === Constants.Providers.OPENAI_COMPATIBLE
     spacing: Style.marginS
 
     NToggle {
@@ -227,7 +180,7 @@ ColumnLayout {
       label: pluginApi?.tr("settings.baseUrl")
       description: pluginApi?.tr("settings.baseUrlDesc")
       text: root.editOpenAiBaseUrl
-      placeholderText: "https://api.openai.com/v1/chat/completions"
+      placeholderText: "http://localhost:11434/v1/chat/completions"
       onTextChanged: root.editOpenAiBaseUrl = text
     }
 
@@ -250,52 +203,31 @@ ColumnLayout {
     description: pluginApi?.tr("settings.modelDesc")
     text: root.editModel
     onTextChanged: {
-      var modelText = (text || "").trim();
-      var defaultModel = providers[root.editProvider]?.defaultModel || "";
-      // Only save custom values, not empty or default
-      if (modelText !== "" && modelText !== defaultModel) {
-        root.editModels = Object.assign({}, root.editModels, {
-          [root.editProvider]: modelText
-        });
-      } else {
-        // Clear the entry so it falls back to default
-        var updated = Object.assign({}, root.editModels);
-        delete updated[root.editProvider];
-        root.editModels = updated;
-      }
+      root.editModel = (text || "").trim();
     }
-    placeholderText: providers[root.editProvider]?.defaultModel || ""
+    placeholderText: provider?.defaultModel || ""
   }
 
   // API Key input (hidden for Ollama/Local)
   NTextInput {
     Layout.fillWidth: true
     visible: {
-      if (root.editProvider === Constants.Providers.OPENAI_COMPATIBLE && root.editOpenAiLocal)
+      if root.editOpenAiLocal
         return false;
-      return providers[root.editProvider]?.requiresKey ?? true;
+      return provider?.requiresKey ?? true;
     }
     label: pluginApi?.tr("settings.apiKey")
     description: {
-      if (root.apiKeyManagedByEnv) {
-        return pluginApi?.tr("settings.apiKeyManagedByEnv");
-      }
-      var provider = providers[root.editProvider];
       if (provider && provider.keyUrl) {
         return (pluginApi?.tr("settings.apiKeyDesc")) + ": " + provider.keyUrl;
       }
       return "";
     }
-    placeholderText: root.apiKeyManagedByEnv ? pluginApi?.tr("settings.apiKeyEnvPlaceholder") : pluginApi?.tr("settings.apiKeyPlaceholder")
-    text: root.apiKeyManagedByEnv ? "" : root.editApiKey
-    enabled: !root.apiKeyManagedByEnv
+    placeholderText: pluginApi?.tr("settings.apiKeyPlaceholder")
+    text: root.editApiKey
     inputMethodHints: Qt.ImhHiddenText
     onTextChanged: {
-      if (!root.apiKeyManagedByEnv) {
-        root.editApiKeys = Object.assign({}, root.editApiKeys, {
-          [root.editProvider]: text
-        });
-      }
+      root.editApiKey = text;
     }
   }
 
@@ -380,30 +312,6 @@ ColumnLayout {
 
   // Save function called by the settings dialog
   function saveSettings() {
-    // Sync model for current provider before saving
-    var modelInput = root.children.find(child => child && child.label === (pluginApi?.tr("settings.model")));
-    if (modelInput && modelInput.text !== undefined) {
-      var modelText = (modelInput.text || "").trim();
-      var defaultModel = providers[root.editProvider]?.defaultModel || "";
-      // Only save if non-empty and different from provider's default
-      if (modelText !== "" && modelText !== defaultModel) {
-        root.editModels = Object.assign({}, root.editModels, {
-          [root.editProvider]: modelText
-        });
-      } else {
-        // Clear the entry to use default
-        var updated = Object.assign({}, root.editModels);
-        delete updated[root.editProvider];
-        root.editModels = updated;
-      }
-    }
-    // Sync API key for current provider
-    var apiKeyInput = root.children.find(child => child && child.label === (pluginApi?.tr("settings.apiKey")));
-    if (apiKeyInput && apiKeyInput.text !== undefined && !root.apiKeyManagedByEnv) {
-      root.editApiKeys = Object.assign({}, root.editApiKeys, {
-        [root.editProvider]: apiKeyInput.text
-      });
-    }
     if (!pluginApi) {
       Logger.e("OllamaAssitant", "Cannot save settings: pluginApi is null");
       return;
@@ -417,22 +325,15 @@ ColumnLayout {
       pluginApi.pluginSettings.translator = {};
     }
 
-    // Save AI settings
-    pluginApi.pluginSettings.ai.provider = root.editProvider;
-    pluginApi.pluginSettings.ai.models = root.editModels;
-    pluginApi.pluginSettings.ai.apiKeys = root.editApiKeys;
+    pluginApi.pluginSettings.ai.model = root.editModel;
+    pluginApi.pluginSettings.ai.apiKey = root.editApiKey;
     pluginApi.pluginSettings.ai.temperature = root.editTemperature;
     pluginApi.pluginSettings.ai.systemPrompt = root.editSystemPrompt;
 
     // Save OpenAI Compatible specific settings
     pluginApi.pluginSettings.ai.openaiLocal = root.editOpenAiLocal;
     pluginApi.pluginSettings.ai.openaiBaseUrl = root.editOpenAiBaseUrl;
-    // Also store legacy single-model value for compatibility
-    try {
-      pluginApi.pluginSettings.ai.model = root.editModels[root.editProvider] || pluginApi.pluginSettings.ai.model || "";
-    } catch (e) {
-      pluginApi.pluginSettings.ai.model = pluginApi.pluginSettings.ai.model || "";
-    }
+  
 
     // Save general settings
     pluginApi.pluginSettings.maxHistoryLength = root.editMaxHistoryLength;

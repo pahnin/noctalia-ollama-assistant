@@ -18,7 +18,7 @@ Item {
   // State from main instance
   readonly property var messages: mainInstance?.messages || []
   readonly property bool isGenerating: mainInstance?.isGenerating || false
-  readonly property int requestConversationIndex: mainInstance?.requestConversationIndex
+  readonly property int requestConversationIndex: mainInstance?.requestConversationIndex || 0
   readonly property int activeConversationIndex: mainInstance?.activeConversationIndex
   readonly property string currentResponse: mainInstance?.currentResponse || ""
   readonly property string errorMessage: mainInstance?.errorMessage || ""
