@@ -15,6 +15,7 @@ Item {
 
   // AI Chat state
   property var conversations: {}
+  property var memoryStore: {}
   property int activeConversationIndex: 0
   property var messages: []
   property bool isGenerating: false
@@ -112,9 +113,10 @@ Item {
 
     root.conversations = result.conversations;
     root.activeConversationIndex = result.activeConversationIndex;
-    root.messages = root.conversations[root.activeConversationIndex] || [];
+    root.messages = root.conversations[root.activeConversationIndex].messages || [];
     root.chatInputText = result.chatInputText;
     root.chatInputCursorPosition = result.chatInputCursorPosition;
+    root.memoryStore = result.memoryStore; 
     Logger.d("OllamaAssistant", "Loaded " + root.messages.length + " messages from cache");
   }
 
@@ -143,6 +145,7 @@ Item {
       var maxHistory = pluginApi?.pluginSettings?.maxHistoryLength || 100;
       var dataStr = ProviderLogic.prepareStateForSave(
         root.conversations,
+        root.memoryStore,
         root.activeConversationIndex,
         root.chatInputText,
         root.chatInputCursorPosition
@@ -163,7 +166,16 @@ Item {
       var keys = Object.keys(root.conversations);
       var newIndex = keys.length > 0 ? Math.max(...keys.map(Number)) + 1 : 0;
       var updated = Object.assign({}, root.conversations);
-      updated[newIndex] = [];
+      updated[newIndex] = {
+        messages: []
+      };
+
+      root.memoryStore[newIndex] = {
+        summary: "",
+        facts: [],
+        lastSummarizedIndex: 0,
+        version: 0
+      };
 
       root.conversations = updated;
       root.activeConversationIndex = newIndex;
@@ -174,13 +186,12 @@ Item {
 
   function switchConversation(index) {
       if (!root.conversations) return;
-
       if (!root.conversations[index]) {
           root.conversations[index] = [];
       }
 
       root.activeConversationIndex = index;
-      root.messages = root.conversations[index];
+      root.messages = root.conversations[index].messages;
   }
 
   // navigation functions
@@ -208,29 +219,41 @@ Item {
     switchConversation(indices[newIndex]);
   }
 
-  // Add a message to the chat
   function addMessage(role, content) {
+    if (!root.conversations) {
+      root.conversations = {};
+    }
+
+    // choose target conversation
+    var index = root.requestConversationIndex > -1
+      ? root.requestConversationIndex
+      : root.activeConversationIndex;
+
+    var conv = root.conversations[index];
+
     var newMessage = {
-      "id": Date.now().toString(),
-      "role": role,
-      "content": content,
-      "timestamp": new Date().toISOString()
+      id: Date.now().toString(),
+      role: role,
+      content: content,
+      timestamp: new Date().toISOString()
     };
 
-    if (!root.conversations) {
-        root.conversations = {};
-    }
-    if( root.requestConversationIndex > -1) {
-      var messagesCopy = root.conversations[root.requestConversationIndex];
-      messagesCopy = [...messagesCopy, newMessage];
-      root.conversations[root.requestConversationIndex] = messagesCopy;
-    } else {
-      var messagesCopy = root.conversations[root.activeConversationIndex] || [];
-      messagesCopy = [...messagesCopy, newMessage];
-      root.conversations[root.activeConversationIndex] = messagesCopy;
-      root.messages = root.conversations[root.activeConversationIndex];
-    }
+    var newMessages = conv.messages.slice();
+    newMessages.push(newMessage);
 
+    var updatedConversations = Object.assign({}, root.conversations);
+
+    updatedConversations[index] = Object.assign({}, conv, {
+      messages: newMessages
+    });
+
+    root.conversations = updatedConversations;
+
+    // update UI binding ONLY if active
+    if (index === root.activeConversationIndex) {
+      root.messages = newMessages;
+    }
+    
     saveState();
     return newMessage;
   }
@@ -238,9 +261,14 @@ Item {
   // Clear chat history
   function clearMessages() {
     root.messages = [];
-    root.conversations[root.activeConversationIndex] = [];
+
+    var index = root.activeConversationIndex;
+
+    var updatedConversations = Object.assign({}, root.conversations);
+    updatedConversations[index] = { messages: [] };
+    root.conversations = updatedConversations;
+
     saveState();
-    Logger.i("OllamaAssistant", "Chat history cleared");
   }
 
   // Send a message to the AI
@@ -427,6 +455,7 @@ Item {
 
       if (root.currentResponse.trim() !== "") {
         root.addMessage("assistant", root.currentResponse.trim());
+        root.maybeTriggerSummarization(root.requestConversationIndex);
       }
       root.chatInputText = ""; // Ensure input is cleared after successful generation
       root.chatInputCursorPosition = 0;
@@ -437,9 +466,208 @@ Item {
     }
   }
 
+  Process {
+    id: summaryProcess
+
+    property var meta: null
+    property string buffer: ""
+
+    stdout: SplitParser {
+      onRead: function(data) {
+        summaryProcess.handleData(data);
+      }
+    }
+
+    function handleData(data) {
+      buffer += data;
+      
+      try {
+        var outer = JSON.parse(buffer);
+        buffer = "";
+
+        var content = outer?.choices?.[0]?.message?.content;
+
+        if (!content) {
+          Logger.e("OllamaAssistant", "Summary parse: missing content");
+          return;
+        }
+
+        try {
+          var inner = ProviderLogic.extractJson(content);
+          if (!inner) {
+            Logger.e("OllamaAssistant", "Failed to extract JSON:", content);
+            return;
+          }
+          Logger.d("OllamaAssistant", "Summary parse inner:", inner);
+          root.applySummaryUpdate(inner, meta);
+        } catch (e) {
+          Logger.e("OllamaAssistant", "Summary inner JSON parse failed: " + e + " content=" + content);
+        }
+      } catch (e) {
+        // wait for full JSON
+      }
+    }
+  }
+
+  function ensureMemory(index) {
+    var memory = root.memoryStore[index];
+
+    if (!memory) {
+      memory = {
+        summary: "",
+        facts: [],
+        lastSummarizedIndex: 0,
+        version: 0
+      };
+    } else {
+      if (!memory.facts) memory.facts = [];
+      if (!memory.summary) memory.summary = "";
+      if (!memory.lastSummarizedIndex) memory.lastSummarizedIndex = 0;
+      if (!memory.version) memory.version = 0;
+    }
+
+    var updatedMemory = Object.assign({}, root.memoryStore);
+    updatedMemory[index] = memory;
+    root.memoryStore = updatedMemory;
+
+    return memory;
+  }
+
+  function updateMemHelper(convIndex, version, memory) {
+    var updatedMemory = Object.assign({}, root.memoryStore);
+
+    updatedMemory[convIndex] = Object.assign({}, memory, {
+      version: version
+    });
+
+    root.memoryStore = updatedMemory;
+  }
+
+  function triggerSummarization(convIndex, chunk) {
+    var memory = ensureMemory(convIndex);
+    var version = memory.version + 1;
+    var prompt = `
+Update memory with strong prioritization:
+
+- Preserve important concepts, decisions, and corrections.
+- De-prioritize small talk, repetition, and minor clarifications.
+- If something is repeated or emphasized, increase its importance.
+- Prefer durable knowledge over transient discussion.
+You may discard less important details if needed.
+
+  Existing summary:
+  ${memory.summary}
+
+  Existing facts:
+  ${memory.facts.join("\n")}
+
+  New messages:
+  ${safeStringify(chunk)}
+
+Return ONLY valid JSON.
+Do NOT use markdown.
+Do NOT wrap in \`\`\` blocks.
+Do NOT include explanations.
+
+Output must be strictly parseable by JSON.parse.
+
+Schema (example):
+{
+  "summary": "short concise summary",
+  "facts": ["fact 1", "fact 2"]
+}
+    `;
+
+    summaryProcess.meta = {
+      convIndex: convIndex,
+      end: memory.lastSummarizedIndex + chunk.length,
+      version: version
+    };
+
+    // update ONLY memoryStore
+    updateMemHelper(convIndex, version, memory);
+
+    var commandData = ProviderLogic.buildSummaryCommand(prompt);
+    Logger.d("OllamaAssistant", "Summary args: ", commandData.args);
+    summaryProcess.buffer = "";
+    summaryProcess.command = commandData.args;
+    summaryProcess.running = true;
+  }
+
+  function safeStringify(obj) {
+    return JSON.stringify(obj).replace(/```/g, "'''");
+  }
+
+  function applySummaryUpdate(result, meta) {
+    var memory = root.memoryStore[meta.convIndex];
+    if (!memory) return;
+
+    if (meta.version !== memory.version) {
+      return; // stale
+    }
+
+    Logger.d("OllamaAssistant",  "summary" +result.summary);
+    Logger.d("OllamaAssistant",  "facts" + result.facts);
+    Logger.d("OllamaAssistant",  "version"  + meta.version);
+ 
+    if (typeof result.facts === "string") {
+      result.facts = result.facts.split(",").map(f => f.trim());
+    }
+    var updatedMemory = Object.assign({}, root.memoryStore);
+
+    updatedMemory[meta.convIndex] = Object.assign({}, memory, {
+      summary: result.summary,
+      facts: result.facts,
+      lastSummarizedIndex: meta.end
+    });
+
+    root.memoryStore = updatedMemory;
+    saveState();
+  }
+
+  function buildContext(index) {
+    var conv = root.conversations[index];
+    var memory = ensureMemory(index);
+
+    var history = [];
+
+    if (memory.summary) {
+      history.push({
+        role: "system",
+        content: "Summary:\n" + memory.summary
+      });
+    }
+
+    if (memory.facts.length > 0) {
+      history.push({
+        role: "system",
+        content: "Facts:\n- " + memory.facts.join("\n- ")
+      });
+    }
+
+    history = history.concat(conv.messages.slice(-2));
+
+    return history;
+  }
+
+  function maybeTriggerSummarization(convIndex) {
+    var conv = root.conversations[convIndex];
+    var memory = ensureMemory(convIndex);
+
+    var start = memory.lastSummarizedIndex;
+    var end = conv.messages.length;
+
+    if (end <= start) return;
+
+    var chunk = conv.messages.slice(start, end);
+
+    triggerSummarization(convIndex, chunk);
+  }
+
   function sendOpenAIRequest() {
     root.requestConversationIndex = root.activeConversationIndex;
-    var history = root.messages;
+    var conv = root.conversations[root.activeConversationIndex];
+    var history = buildContext(root.activeConversationIndex);
     var commandData = ProviderLogic.buildOpenAICommand(openaiBaseUrl, apiKey, model, systemPrompt, history, temperature);
 
     Logger.i("OllamaAssistant", "sendOpenAIRequest: endpoint=" + commandData.url);
