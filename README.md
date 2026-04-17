@@ -14,9 +14,9 @@ I am getting satisfactory responses with qwen3.5:9b on 16 GB VRAM GPU
 - **Multiple Conversations**: Similar to ChatGPT web, have different conversations
 - **System Prompts**: Customize AI behavior with system instructions
 - **Temperature Control**: Adjust response creativity
+- **History management**: Conversation history gets condensed in background allowing for better long conversations (less tokens and higher quality)
 
 #### Upcoming
-- Condensed history for super long conversations
 - Weighted Condensation mechanism to include conversation that user can vote
 - Improved history storage ( currently json storage )
 
