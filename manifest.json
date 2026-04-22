@@ -1,7 +1,7 @@
 {
   "id": "noctalia-ollama-assistant",
   "name": "Ollama Chat Panel",
-  "version": "2026.04.17",
+  "version": "2026.04.22",
   "minNoctaliaVersion": "4.1.2",
   "author": "phanindra srungavarapu",
   "license": "MIT",
