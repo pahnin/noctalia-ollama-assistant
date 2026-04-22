@@ -106,53 +106,20 @@ Item {
         Layout.preferredHeight: tabRow.implicitHeight + Style.marginS * 3
         color: Color.mSurfaceVariant
         radius: Style.radiusM
-        // Scaled host for tab row so top bar scales with plugin `uiScale`.
-        Flickable {
-          id: flick
+
+        RowLayout {
           anchors.fill: parent
           anchors.margins: Style.marginM
-          contentWidth: tabRow.width
-          clip: true
-          flickableDirection: Flickable.HorizontalFlick
-          boundsBehavior: Flickable.StopAtBounds
-          interactive: true
-
+          spacing: Style.marginM
+          // Buttons (fixed on left, no stretching)
           Row {
-            id: tabRow
-            height: implicitHeight
-            spacing: Style.marginS
-            Repeater {
-              model: Object.keys(convs)
-              id: tabRowRepeater
-
-              delegate: TabButton {
-                width: Math.min(implicitWidth * panel.uiScale, 200)
-                height: 33 * panel.uiScale
-
-                icon: "sparkles"
-                label: "Chat " + (Number(modelData) + 1)
-
-                tooltipText: {
-                  var convMemory = memoryStore[Number(modelData)]
-                  var content = convMemory ? convMemory.summary : ""
-                  return content ? content.substring(0, 250) + (content.length > 250 ? "...": "") : ""
-                }
-                isActive: mainInstance.activeConversationIndex === Number(modelData)
-                onClicked: mainInstance.switchConversation(Number(modelData))
-              }
-            }
-
-            Item {
-              width: Style.marginM
-            }
+            spacing: Style.marginM
 
             TabButton {
               width: 33 * panel.uiScale
               height: 33 * panel.uiScale
               icon: "plus"
-              label: ""
               tooltipText: "New Chat"
-
               onClicked: mainInstance.createNewConversation()
             }
 
@@ -160,12 +127,118 @@ Item {
               width: 33 * panel.uiScale
               height: 33 * panel.uiScale
               icon: "trash"
-              label: ""
+              visible: false
               tooltipText: "Clear Current Chat"
-
               onClicked: mainInstance.clearMessages()
             }
+          }
 
+          // Tabs (takes remaining space)
+          Flickable {
+            id: flick
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+
+            contentWidth: tabRow.width
+            clip: true
+            flickableDirection: Flickable.HorizontalFlick
+            boundsBehavior: Flickable.StopAtBounds
+
+            Row {
+              id: tabRow
+              spacing: Style.marginS
+
+              Repeater {
+                model: Object.keys(convs)
+
+                delegate: TabButton {
+                  id: tabBtn
+                  width: Math.min(implicitWidth * panel.uiScale, 200)
+                  height: 33 * panel.uiScale
+                  tooltipText: memoryStore[Number(modelData)]?.summary
+                  icon: "sparkles"
+                  label: "Chat " + (Number(modelData) + 1)
+                  isActive: mainInstance.activeConversationIndex === Number(modelData)
+
+                  onClicked: mainInstance.switchConversation(Number(modelData))
+                }
+              }
+            }
+          }
+
+
+          Item {
+            anchors.fill: flick
+            z: 2
+            // pointerEvents: false   // don’t block clicks
+
+            // LEFT fade
+            Rectangle {
+              width: 50
+              anchors.left: parent.left
+              anchors.top: parent.top
+              anchors.bottom: parent.bottom
+
+              visible: flick.contentX > 0
+
+              gradient: Gradient {
+                orientation: Gradient.Horizontal
+                GradientStop { position: 0.0; color: Color.mSurfaceVariant }
+                GradientStop { position: 1.0; color: "transparent" }
+              }
+              MouseArea {
+                anchors.fill: parent
+                hoverEnabled: true
+
+                onEntered: scrollLeftTimer.start()
+                onExited: scrollLeftTimer.stop()
+              }
+            }
+
+            Timer {
+              id: scrollLeftTimer
+              interval: 16
+              repeat: true
+              running: false
+              onTriggered: {
+                flick.contentX = Math.max(0, flick.contentX - 5)
+              }
+            }
+
+            // RIGHT fade
+            Rectangle {
+              width: 50
+              anchors.right: parent.right
+              anchors.top: parent.top
+              anchors.bottom: parent.bottom
+
+              visible: flick.contentX < flick.contentWidth - flick.width - 1
+
+              gradient: Gradient {
+                orientation: Gradient.Horizontal
+                GradientStop { position: 0.0; color: "transparent" }
+                GradientStop { position: 1.0; color: Color.mSurfaceVariant }
+              }
+              MouseArea {
+                  anchors.fill: parent
+                  hoverEnabled: true
+
+                  onEntered: scrollRightTimer.start()
+                  onExited: scrollRightTimer.stop()
+              }
+            }
+            Timer {
+              id: scrollRightTimer
+              interval: 16
+              repeat: true
+              running: false
+              onTriggered: {
+                flick.contentX = Math.min(
+                  flick.contentWidth - flick.width,
+                  flick.contentX + 5
+                )
+              }
+            }
           }
         }
       }
@@ -260,3 +333,4 @@ Item {
     }
   }
 }
+
