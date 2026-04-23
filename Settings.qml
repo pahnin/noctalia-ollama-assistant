@@ -212,8 +212,9 @@ ColumnLayout {
   NTextInput {
     Layout.fillWidth: true
     visible: {
-      if root.editOpenAiLocal
+      if(root.editOpenAiLocal) {
         return false;
+      }
       return provider?.requiresKey ?? true;
     }
     label: pluginApi?.tr("settings.apiKey")
