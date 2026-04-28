@@ -1,4 +1,7 @@
+/* eslint-disable /
 .pragma library
+/ eslint-enable */
+
 
 // ===================================
 // AI Provider Logic

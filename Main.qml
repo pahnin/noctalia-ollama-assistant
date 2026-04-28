@@ -5,6 +5,7 @@ import qs.Commons
 import qs.Services.UI
 import "ProviderLogic.js" as ProviderLogic
 import "Constants.js" as Constants
+import "Storage.js" as Storage
 
 Item {
   // Internal flag to prevent duplicate error messages
@@ -24,9 +25,6 @@ Item {
   property bool isManuallyStopped: false
   property int requestConversationIndex: -1
 
-  // Cache directory for state (messages) - use global noctalia cache
-  readonly property string cacheDir: typeof Settings !== 'undefined' && Settings.cacheDir ? Settings.cacheDir + "plugins/ollama-assistant/" : ""
-  readonly property string stateCachePath: cacheDir + "state.json"
 
   property string chatInputText: "" // Chat input state - persisted to cache
   property int chatInputCursorPosition: 0 // Chat input cursor position - persisted to cache
@@ -64,15 +62,40 @@ Item {
 
   Component.onCompleted: {
     Logger.d("OllamaAssistant", "Plugin initialized");
-    // State loading is handled by FileView onLoaded
-    ensureCacheDir();
-  }
 
-  // Ensure cache directory exists
-  function ensureCacheDir() {
-    if (cacheDir) {
-      Quickshell.execDetached(["mkdir", "-p", cacheDir]);
-    }
+    Storage.loadState(function(content, error) {
+      if (error) {
+        if (error === 2) {
+          Logger.d("OllamaAssistant", "No cache file found, starting fresh");
+        } else {
+          Logger.e("OllamaAssistant", "Failed to load state cache: " + error);
+        }
+        return;
+      }
+
+      Logger.d("OllamaAssistant", "before calling processLoadedState");
+
+      var result = ProviderLogic.processLoadedState(content);
+
+      if (!result) {
+        Logger.d("OllamaAssistant", "Empty cache file, starting fresh");
+        return;
+      }
+
+      if (result.error) {
+        Logger.e("OllamaAssistant", "Failed to parse state cache: " + result.error);
+        return;
+      }
+
+      root.conversations = result.conversations;
+      root.activeConversationIndex = result.activeConversationIndex;
+      root.messages = root.conversations[root.activeConversationIndex].messages || [];
+      root.chatInputText = result.chatInputText;
+      root.chatInputCursorPosition = result.chatInputCursorPosition;
+      root.memoryStore = result.memoryStore;
+
+      Logger.d("OllamaAssistant", "Loaded " + root.messages.length + " messages from cache");
+    });
   }
 
   // FileView for state cache (messages)
@@ -135,14 +158,12 @@ Item {
   }
 
   function performSaveState() {
-    if (!saveStateQueued || !cacheDir)
+    if (!saveStateQueued)
       return;
+
     saveStateQueued = false;
 
     try {
-      ensureCacheDir();
-
-      var maxHistory = pluginApi?.pluginSettings?.maxHistoryLength || 100;
       var dataStr = ProviderLogic.prepareStateForSave(
         root.conversations,
         root.memoryStore,
@@ -151,7 +172,8 @@ Item {
         root.chatInputCursorPosition
       );
 
-      stateCacheFile.setText(dataStr);
+      Storage.saveState(dataStr);
+
     } catch (e) {
       Logger.e("OllamaAssistant", "Failed to save state cache: " + e);
     }
