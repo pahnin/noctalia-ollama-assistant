@@ -29,6 +29,12 @@ Item {
   property string chatInputText: "" // Chat input state - persisted to cache
   property int chatInputCursorPosition: 0 // Chat input cursor position - persisted to cache
 
+  property bool sqliteAvailable: false
+  readonly property string sqliteDbPath: {
+    if (typeof Settings !== "undefined" && Settings.cacheDir)
+      return Settings.cacheDir + "plugins/ollama-assistant/state.db";
+    return "";
+  }
   // Provider configurations
   readonly property var provider: {
     "name": "OpenAI Compatible",
@@ -63,84 +69,109 @@ Item {
   Component.onCompleted: {
     Logger.d("OllamaAssistant", "Plugin initialized");
 
-    Storage.loadState(function(content, error) {
-      if (error) {
-        if (error === 2) {
-          Logger.d("OllamaAssistant", "No cache file found, starting fresh");
-        } else {
-          Logger.e("OllamaAssistant", "Failed to load state cache: " + error);
+    Storage.init({
+      dbPath: sqliteDbPath,
+      execSql: function(query, callback) {
+        Logger.d("OllamaAssistant", "ExecSQL in main.qml");
+        if (!sqliteDbPath) {
+          callback(null, "no db path");
+          return;
         }
-        return;
+
+        var dir = sqliteDbPath.substring(0, sqliteDbPath.lastIndexOf("/"));
+        Quickshell.execDetached(["mkdir", "-p", dir]);
+        var slicedQ = query.slice(0, 100);
+        Logger.d("OllamaAssistant", "[SQL] Exec request truncated query:"+ slicedQ);
+        Logger.d("OllamaAssistant", "[SQL] Process running: "+ sqliteProcess.running);
+
+        sqliteProcess.buffer = "";
+        sqliteProcess.callback = callback;
+        Logger.d("OllamaAssistant", "DB path: "+ sqliteDbPath)
+
+        sqliteProcess.command = [
+          "sqlite3",
+          "-json",
+          sqliteDbPath,
+          query
+        ];
+        sqliteProcess.running = true;
       }
 
-      Logger.d("OllamaAssistant", "before calling processLoadedState");
+    }, function(result) {
+      sqliteAvailable = result.sqliteAvailable;
 
-      var result = ProviderLogic.processLoadedState(content);
+      Storage.loadState(function(content, error) {
+        if (error) {
+          Logger.e("OllamaAssistant", "Load failed: " + error);
+          return;
+        }
 
-      if (!result) {
-        Logger.d("OllamaAssistant", "Empty cache file, starting fresh");
-        return;
-      }
+        var result = ProviderLogic.processLoadedState(content);
+        if (!result || result.error) return;
 
-      if (result.error) {
-        Logger.e("OllamaAssistant", "Failed to parse state cache: " + result.error);
-        return;
-      }
-
-      root.conversations = result.conversations;
-      root.activeConversationIndex = result.activeConversationIndex;
-      root.messages = root.conversations[root.activeConversationIndex].messages || [];
-      root.chatInputText = result.chatInputText;
-      root.chatInputCursorPosition = result.chatInputCursorPosition;
-      root.memoryStore = result.memoryStore;
-
-      Logger.d("OllamaAssistant", "Loaded " + root.messages.length + " messages from cache");
+        root.conversations = result.conversations;
+        root.activeConversationIndex = result.activeConversationIndex;
+        root.messages = root.conversations[root.activeConversationIndex].messages || [];
+        root.chatInputText = result.chatInputText;
+        root.chatInputCursorPosition = result.chatInputCursorPosition;
+        root.memoryStore = result.memoryStore;
+      });
     });
   }
 
-  // FileView for state cache (messages)
-  FileView {
-    id: stateCacheFile
-    path: root.stateCachePath
-    watchChanges: false
+  // =====================
+  // SQLITE PROCESS
+  // =====================
+  Process {
+    id: sqliteProcess
 
-    onLoaded: {
-      loadStateFromCache();
-    }
+    property string buffer: ""
+    property string errorBuffer: ""
+    property var callback: null
 
-    onLoadFailed: function (error) {
-      if (error === 2) {
-        // File doesn't exist, start fresh
-        Logger.d("OllamaAssistant", "No cache file found, starting fresh");
-      } else {
-        Logger.e("OllamaAssistant", "Failed to load state cache: " + error);
+    stdout: SplitParser {
+      onRead: function (data) {
+        sqliteProcess.buffer += data;
       }
     }
-  }
 
-  // Load state from cache file
-  function loadStateFromCache() {
-    var content = stateCacheFile.text();
-    Logger.d("OllamaAssistant", "before calling processLoadedState");
-    var result = ProviderLogic.processLoadedState(content);
-
-    if (!result) {
-      Logger.d("OllamaAssistant", "Empty cache file, starting fresh");
-      return;
+    stderr: SplitParser {
+      onRead: function (data) {
+        sqliteProcess.errorBuffer += data;
+      }
     }
 
-    if (result.error) {
-      Logger.e("OllamaAssistant", "Failed to parse state cache: " + result.error);
-      return;
-    }
+    onExited: function (exitCode) {
+      var cb = sqliteProcess.callback;
+      var output = sqliteProcess.buffer;
+      var errOut = sqliteProcess.errorBuffer;
 
-    root.conversations = result.conversations;
-    root.activeConversationIndex = result.activeConversationIndex;
-    root.messages = root.conversations[root.activeConversationIndex].messages || [];
-    root.chatInputText = result.chatInputText;
-    root.chatInputCursorPosition = result.chatInputCursorPosition;
-    root.memoryStore = result.memoryStore; 
-    Logger.d("OllamaAssistant", "Loaded " + root.messages.length + " messages from cache");
+      Logger.d("OllamaAssistant", "SQL Exited. Callback exists?", !!cb);
+      var logOutput = output.slice(0, 100);
+      Logger.d("OllamaAssistant", "SQL RAW OUTPUT: (truncated)", logOutput);
+      if(errOut.trim() !== "") {
+        Logger.e("OllamaAssistant", "SQL STDERR:", errOut);
+      }
+      sqliteProcess.buffer = "";
+      sqliteProcess.errorBuffer = "";
+      sqliteProcess.callback = null;
+
+      if (!cb) return;
+
+      if (exitCode !== 0) {
+        cb(null, errOut || "sqlite failed");
+        return;
+      }
+
+      try {
+        var parsed = output && output.trim() !== ""
+          ? JSON.parse(output)
+          : [];
+        cb(parsed, null);
+      } catch (e) {
+        cb(null, "parse error");
+      }
+    }
   }
 
   // Debounced save timer

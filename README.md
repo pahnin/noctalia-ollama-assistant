@@ -18,8 +18,29 @@ I am getting satisfactory responses with qwen3.5:9b on 16 GB VRAM GPU
 
 #### Upcoming
 - Weighted Condensation mechanism to include conversation that user can vote
-- Improved history storage ( currently json storage )
 
+## ⚠️ Storage Changes (SQLite Migration)
+
+**Breaking change**
+
+- The plugin now uses **SQLite (`state.db`)** for persistence when `sqlite3` is available on the system.
+- On first run, existing data from `state.json` is **automatically migrated** to SQLite.
+- After migration, **SQLite becomes the primary storage**, and JSON is no longer actively used.
+
+### Important Notes
+
+- Ensure `sqlite3` is installed if you don't need for now the plugin will work normaly.
+- Once migrated, your data will live in the database (`state.db`) instead of `state.json`.
+- Manual edits to `state.json` will no longer affect the plugin after migration.
+- A fallback to JSON storage is still available **only if SQLite is not present**, but this may be removed in future versions.
+
+## 🛠️ Migration Summary
+
+| Scenario | Behavior |
+|----------|----------|
+| SQLite available | Auto-migrate JSON → SQLite, use DB going forward |
+| SQLite not available | Continue using JSON (legacy mode) |
+| Future versions | JSON support may be deprecated |
 
 ## Installation
 

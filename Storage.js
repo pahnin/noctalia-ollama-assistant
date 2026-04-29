@@ -3,6 +3,13 @@
 / eslint-enable */
 
 var LoggerRef = null;
+var sqliteAvailable = false;
+var dbPath = "";
+var execSql = null;
+var _execSqlRaw = null; // actual function from Main.qml
+var _queue = [];
+var _running = false;
+
 
 // =====================
 // Logger
@@ -23,8 +30,32 @@ function getLogger() {
   return LoggerRef;
 }
 
+
+function _processQueue() {
+  if (_running) return;
+  if (_queue.length === 0) return;
+
+  var job = _queue.shift();
+  _running = true;
+  getLogger().d("OllamaAssistant", "[QUEUE] START, running=" + _running);
+  getLogger().d("OllamaAssistant", "[Storage] [QUEUE] Running query. Remaining: " + _queue.length);
+
+  _execSqlRaw(job.query, function(result, err) {
+    _running = false;
+
+    getLogger().d("OllamaAssistant", "[Storage] [QUEUE] Completed query");
+
+    try {
+      job.cb && job.cb(result, err);
+    } catch (e) {
+      getLogger().e("OllamaAssistant", "[Storage] Callback error: " + e);
+    }
+
+    _processQueue();
+  });
+}
 // =====================
-// Path
+// Path (JSON fallback)
 // =====================
 function getStatePath() {
   try {
@@ -32,7 +63,6 @@ function getStatePath() {
       return Settings.cacheDir + "plugins/ollama-assistant/state.json";
     }
   } catch (e) {}
-
   return "";
 }
 
@@ -49,41 +79,210 @@ function ensureDir(path) {
     var dir = path.substring(0, idx);
     Quickshell.execDetached(["mkdir", "-p", dir]);
   } catch (e) {
-    getLogger().e("Storage", "Failed to ensure dir: " + e);
+    getLogger().e("OllamaAssistant", "[Storage] Failed to ensure dir: " + e);
   }
 }
 
 // =====================
-// Safe destroy helper
+// INIT
 // =====================
-function safeDestroy(obj) {
-  if (!obj) return;
+function init(config, callback) {
+  dbPath = config.dbPath;
+  _execSqlRaw = config.execSql;
+  getLogger().d("OllamaAssistant", "[Storage] Init");
+  getLogger().d("OllamaAssistant", "[Storage] dbPath: " + dbPath);
+  getLogger().d("OllamaAssistant", "[Storage] execsqlRaw: " + _execSqlRaw);
 
-  try {
-    Qt.callLater(function () {
-      try {
-        obj.destroy();
-      } catch (e) {
-        // ignore
+  if (!_execSqlRaw || !dbPath) {
+    sqliteAvailable = false;
+    return callback({ sqliteAvailable: false });
+  }
+
+  // wrap with queue
+  execSql = function(query, cb) {
+    _queue.push({ query: query, cb: cb });
+    _processQueue();
+  };
+
+  // test connection
+  execSql("SELECT 1;", function(_, err) {
+    if (err) {
+      sqliteAvailable = false;
+      return callback({ sqliteAvailable: false });
+    }
+
+    initSchema(function(schemaErr) {
+      if (schemaErr) {
+        sqliteAvailable = false;
+        return callback({ sqliteAvailable: false });
       }
+
+      sqliteAvailable = true;
+
+      migrateIfNeeded(function(migErr) {
+        if (migErr) {
+          getLogger().e("OllamaAssistant", "[Storage] Migration failed: " + migErr);
+        }
+        callback({ sqliteAvailable: true });
+      });
     });
-  } catch (e) {
-    // fallback if callLater unavailable
-    try {
-      obj.destroy();
-    } catch (_) {}
-  }
+  });
 }
 
+// =====================
+// SCHEMA
+// =====================
+function initSchema(cb) {
+  execSql(`
+    CREATE TABLE IF NOT EXISTS conversations (
+      id INTEGER PRIMARY KEY,
+      data TEXT
+    );
+  `, function(_, err) {
+    if (err) return cb(err);
+
+    execSql(`
+      CREATE TABLE IF NOT EXISTS memories (
+        conversation_id INTEGER PRIMARY KEY,
+        data TEXT
+      );
+    `, function(_, err2) {
+      cb(err2 || null);
+    });
+  });
+}
+
+function migrateIfNeeded(callback) {
+  loadFromJson(function(content, err) {
+    if (err || !content) return callback(null); // nothing to migrate
+
+    var parsed;
+    try {
+      parsed = JSON.parse(content);
+    } catch (e) {
+      return callback("Invalid JSON");
+    }
+
+    if (parsed.meta && parsed.meta.migrated) {
+      return callback(null); // already done
+    }
+
+    insertJsonIntoSqlite(parsed, function(insertErr) {
+      if (insertErr) return callback(insertErr);
+
+      // mark migrated
+      parsed.meta = parsed.meta || {};
+      parsed.meta.migrated = true;
+
+      saveToJson(JSON.stringify(parsed));
+
+      callback(null);
+    });
+  });
+}
+
+function insertJsonIntoSqlite(data, cb) {
+  var conversations = data.conversations || {};
+  var memoryStore = data.memoryStore || {};
+
+  var keys = Object.keys(conversations);
+  var total = keys.length;
+
+  if (total === 0) {
+    cb(null);
+    return;
+  }
+
+  var completed = 0;
+  var failed = false;
+
+  function doneOnce(err) {
+    if (failed) return;
+    failed = true;
+    cb(err);
+  }
+
+  keys.forEach(function(key) {
+    getLogger().d("OllamaAssistant", "[MIGRATE] Inserting conversation: " + key);
+    var conv = conversations[key];
+    var mem = memoryStore[key] || {};
+
+    var convStr = JSON.stringify(conv).replace(/'/g, "''");
+    var memStr = JSON.stringify(mem).replace(/'/g, "''");
+
+    var insertConvQuery =
+      "INSERT INTO conversations (id, data) VALUES (" +
+      key + ", '" + convStr + "') " +
+      "ON CONFLICT(id) DO UPDATE SET data=excluded.data;";
+
+    execSql(insertConvQuery, function(_, err1) {
+      if (err1) return doneOnce(err1);
+      getLogger().d("OllamaAssistant", "[MIGRATE] Callback after inserting conversation: " + key);
+      var insertMemQuery =
+        "INSERT INTO memories (conversation_id, data) VALUES (" +
+        key + ", '" + memStr + "') " +
+        "ON CONFLICT(conversation_id) DO UPDATE SET data=excluded.data;";
+
+      execSql(insertMemQuery, function(_, err2) {
+        if (err2) return doneOnce(err2);
+
+        getLogger().d("OllamaAssistant", "[MIGRATE] Callback after inserting memories: " + key);
+
+        completed++;
+
+        if (completed === total && !failed) {
+          cb(null);
+        }
+      });
+    });
+  });
+}
 // =====================
 // LOAD
 // =====================
 function loadState(callback) {
-  var logger = getLogger();
+  if (!sqliteAvailable) {
+    getLogger().e("OllamaAssistant", "[Storage] SQLite not available");
+    return callback("", -100);
+  }
+
+  loadFromSqlite(callback);
+}
+
+function loadFromSqlite(callback) {
+  execSql("SELECT id, data FROM conversations;", function(rows, err) {
+    if (err) return callback("", err);
+
+    var result = {
+      conversations: {},
+      memoryStore: {},
+      activeConversationIndex: 0
+    };
+
+    for (var i = 0; i < rows.length; i++) {
+      var parsed = JSON.parse(rows[i].data);
+      result.conversations[rows[i].id] = parsed;
+    }
+
+    execSql("SELECT conversation_id, data FROM memories;", function(memRows) {
+
+      for (var j = 0; j < memRows.length; j++) {
+        result.memoryStore[memRows[j].conversation_id] =
+          JSON.parse(memRows[j].data);
+      }
+
+      callback(JSON.stringify(result), null);
+    });
+  });
+}
+
+// =====================
+// JSON FALLBACK
+// =====================
+function loadFromJson(callback) {
   var path = getStatePath();
 
   if (!path) {
-    logger.e("Storage", "Invalid cache path");
     callback("", -1);
     return;
   }
@@ -110,23 +309,19 @@ function loadState(callback) {
 
     file.onLoaded.connect(function () {
       try {
-        var content = file.text();
-        logger.d("Storage", "State loaded");
-        done(content, null);
+        done(file.text(), null);
       } catch (e) {
-        logger.e("Storage", "Read error: " + e);
         done("", -1);
       }
     });
 
     file.onLoadFailed.connect(function (error) {
-      logger.d("Storage", "Load failed: " + error);
-      done("", error); // preserve behavior (2 = not found)
+      done("", error);
     });
 
     file.reload();
+
   } catch (e) {
-    logger.e("Storage", "Load exception: " + e);
     done("", -1);
   }
 }
@@ -135,35 +330,74 @@ function loadState(callback) {
 // SAVE
 // =====================
 function saveState(dataStr) {
-  var logger = getLogger();
-  var path = getStatePath();
-
-  if (!path) {
-    logger.e("Storage", "Invalid cache path");
-    return;
+  if (sqliteAvailable) {
+    saveToSqlite(dataStr);
+  } else {
+    saveToJson(dataStr);
   }
+}
 
-  var file = null;
-
+function saveToSqlite(dataStr) {
   try {
-    ensureDir(path);
+    var parsed = JSON.parse(dataStr);
+    var conversations = parsed.conversations || {};
 
-    file = Qt.createQmlObject(
-      'import Quickshell.Io; FileView { watchChanges: false }',
-      Qt.application,
-      "StorageFileViewSave"
-    );
+    for (var key in conversations) {
+      var conv = conversations[key];
+      var escaped = JSON.stringify(conv).replace(/'/g, "''");
 
-    file.path = path;
+      execSql(`
+        INSERT INTO conversations (id, data)
+        VALUES (${key}, '${escaped}')
+        ON CONFLICT(id) DO UPDATE SET data=excluded.data;
+      `, function(){});
+    }
+    for (var key in memoryStore) {
+      var mem = memoryStore[key];
+      var escapedMem = JSON.stringify(mem).replace(/'/g, "''");
 
-    file.setText(dataStr);
-    logger.d("Storage", "State saved");
-
-    // defer destroy to avoid race with underlying IO
-    safeDestroy(file);
+      execSql(`
+        INSERT INTO memories (conversation_id, data)
+        VALUES (${key}, '${escapedMem}')
+        ON CONFLICT(conversation_id) DO UPDATE SET data=excluded.data;
+      `, function(){});
+    }
 
   } catch (e) {
-    logger.e("Storage", "Save error: " + e);
-    safeDestroy(file);
+    getLogger().e("Storage", "SQLite save failed: " + e);
+    saveToJson(dataStr);
+  }
+}
+
+function saveToJson(dataStr) {
+  var path = getStatePath();
+  if (!path) return;
+
+  ensureDir(path);
+
+  var file = Qt.createQmlObject(
+    'import Quickshell.Io; FileView { watchChanges: false }',
+    Qt.application,
+    "StorageFileViewSave"
+  );
+
+  file.path = path;
+  file.setText(dataStr);
+
+  safeDestroy(file);
+}
+
+// =====================
+// UTIL
+// =====================
+function safeDestroy(obj) {
+  if (!obj) return;
+
+  try {
+    Qt.callLater(function () {
+      try { obj.destroy(); } catch (_) {}
+    });
+  } catch (_) {
+    try { obj.destroy(); } catch (_) {}
   }
 }
