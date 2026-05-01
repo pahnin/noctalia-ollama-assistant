@@ -77,6 +77,7 @@ Item {
       // Delay to ensure child is ready
       Qt.callLater(function () {
         aiChatViewRef.focusInput();
+        scrollToActiveTab()
       });
     }
   }
@@ -114,6 +115,8 @@ Item {
           // Buttons (fixed on left, no stretching)
           Row {
             spacing: Style.marginM
+            Layout.fillHeight: true
+            Layout.alignment: Qt.AlignVCenter
 
             TabButton {
               width: 33 * panel.uiScale
@@ -138,29 +141,52 @@ Item {
             id: flick
             Layout.fillWidth: true
             Layout.fillHeight: true
+            height: 50
 
             contentWidth: tabRow.width
+            contentHeight: tabContainer.height
             clip: true
             flickableDirection: Flickable.HorizontalFlick
             boundsBehavior: Flickable.StopAtBounds
+
+            ScrollBar.horizontal: ScrollBar {
+              policy: ScrollBar.AlwaysOn
+            }
+
+            MouseArea {
+              anchors.fill: parent
+              acceptedButtons: Qt.NoButton  // don’t block clicks
+
+              onWheel: (event) => {
+                flick.contentX -= event.angleDelta.y
+                event.accepted = true
+              }
+            }
 
             Row {
               id: tabRow
               spacing: Style.marginS
 
               Repeater {
-                model: Object.keys(convs)
+                model: Object.keys(convs).reverse()
 
                 delegate: TabButton {
                   id: tabBtn
+                  property int convIndex: Number(modelData)
                   width: Math.min(implicitWidth * panel.uiScale, 200)
                   height: 33 * panel.uiScale
                   tooltipText: memoryStore[Number(modelData)]?.summary
                   icon: "sparkles"
                   label: "Chat " + (Number(modelData) + 1)
                   isActive: mainInstance.activeConversationIndex === Number(modelData)
-
+                  Component.onCompleted: maybeScrollToMe()
                   onClicked: mainInstance.switchConversation(Number(modelData))
+                  function maybeScrollToMe() {
+                    if (!isActive) return
+                    Qt.callLater(function () {
+                      panel.scrollToItem(tabBtn)
+                    })
+                  }
                 }
               }
             }
@@ -177,7 +203,6 @@ Item {
               width: 50
               anchors.left: parent.left
               anchors.top: parent.top
-              anchors.bottom: parent.bottom
 
               visible: flick.contentX > 0
 
@@ -330,6 +355,37 @@ Item {
       hoverEnabled: true
       cursorShape: Qt.PointingHandCursor
       onClicked: tabButton.clicked()
+    }
+  }
+
+  function scrollToItem(item) {
+    if (!item || !flick) return
+    // position of item inside Flickable content
+    let itemX = item.x
+    let itemRight = itemX + item.width
+    let viewLeft = flick.contentX
+    let viewRight = viewLeft + flick.width
+
+    // If already fully visible → do nothing
+    if (itemX >= viewLeft && itemRight <= viewRight)
+        return
+
+    // Center it (better UX than just "bring into view")
+    let target = itemX - (flick.width / 2) + (item.width / 2)
+
+    // Clamp
+    target = Math.max(0, Math.min(target, flick.contentWidth - flick.width))
+    flick.contentX = target
+  }
+
+
+  function scrollToActiveTab() {
+    for (let i = 0; i < tabRow.children.length; i++) {
+      let child = tabRow.children[i]
+      if (child.isActive) {
+        scrollToItem(child)
+        break
+      }
     }
   }
 }
