@@ -1,7 +1,7 @@
 import QtQuick
 import Quickshell
 import Quickshell.Io
-import qs.Commons
+import qs.Commons 
 import qs.Services.UI
 import "ProviderLogic.js" as ProviderLogic
 import "Constants.js" as Constants
@@ -326,7 +326,7 @@ Item {
 
   // Send a message to the AI
   function sendMessage(userMessage) {
-    Logger.i("OllamaAssistant", "sendMessage called with: " + userMessage);
+    Logger.d("OllamaAssistant", "sendMessage called with: " + userMessage);
     if (!userMessage || userMessage.trim() === "") {
       Logger.i("OllamaAssistant", "sendMessage: empty message, abort");
       return;
@@ -338,12 +338,7 @@ Item {
 
     // Check API key for non-local providers
     // For OpenAI Compatible, check apiKey only if NOT local
-    var requiresKey = true;
-    if (openaiLocal) {
-      requiresKey = false;
-    }
-
-    if (requiresKey && (!apiKey || apiKey.trim() === "")) {
+    if (!openaiLocal && (!apiKey || apiKey.trim() === "")) {
       root.errorMessage = pluginApi?.tr("errors.noApiKey");
       Logger.e("OllamaAssistant", "sendMessage: missing API key");
       ToastService.showError(root.errorMessage);
@@ -359,10 +354,10 @@ Item {
     root.errorMessage = "";
 
     try {
-      Logger.i("OllamaAssistant", "Calling sendOpenAIRequest() for " + provider);
-      sendOpenAIRequest();
+      Logger.i("OllamaAssistant", "Calling sendChatRequest() for " + provider);
+      sendChatRequest();
     } catch(error) {
-      Logger.e("OllamaAssistant", "Error calling sendOpenAIRequest");
+      Logger.e("OllamaAssistant", "Error calling sendChatRequest");
       root.errorMessage = error.message || "Unknown error";
       Logger.e("OllamaAssistant", "Error: " + root.errorMessage);
       root.isGenerating = false;
@@ -418,7 +413,7 @@ Item {
       root.currentResponse = "";
       root.errorMessage = "";
 
-      sendOpenAIRequest();
+      sendChatRequest();
     }
   }
 
@@ -429,8 +424,8 @@ Item {
     Logger.i("OllamaAssistant", "Stopping generation");
 
     root.isManuallyStopped = true;
-    if (openaiProcess.running)
-      openaiProcess.running = false;
+    if (chatProcess.running)
+      chatProcess.running = false;
 
     root.isGenerating = false;
     // If we have a partial response, add it to chat history
@@ -444,13 +439,13 @@ Item {
   // OpenAI API Compatible ( ollama )
   // =====================
   Process {
-    id: openaiProcess
+    id: chatProcess
 
     property string buffer: ""
 
     stdout: SplitParser {
       onRead: function (data) {
-        openaiProcess.handleStreamData(data);
+        chatProcess.handleStreamData(data);
       }
     }
 
@@ -474,13 +469,13 @@ Item {
       } else if (result.error) {
         Logger.e("OllamaAssistant", "OpenAI stream error: " + result.error);
       } else if (result.raw) {
-        openaiProcess.buffer += result.raw;
+        chatProcess.buffer += result.raw;
         try {
-          var errorJson = JSON.parse(openaiProcess.buffer);
+          var errorJson = JSON.parse(chatProcess.buffer);
           if (errorJson.error) {
             root.errorMessage = errorJson.error.message || "API error";
           }
-          openaiProcess.buffer = "";
+          chatProcess.buffer = "";
         } catch (e) {
           // Incomplete JSON, keep buffering
         }
@@ -515,7 +510,7 @@ Item {
       root.requestConversationIndex = -1;
       root.saveState();
 
-      openaiProcess.buffer = "";
+      chatProcess.buffer = "";
     }
   }
 
@@ -586,50 +581,10 @@ Item {
     return memory;
   }
 
-  function updateMemHelper(convIndex, version, memory) {
-    var updatedMemory = Object.assign({}, root.memoryStore);
-
-    updatedMemory[convIndex] = Object.assign({}, memory, {
-      version: version
-    });
-
-    root.memoryStore = updatedMemory;
-  }
-
   function triggerSummarization(convIndex, chunk) {
     var memory = ensureMemory(convIndex);
     var version = memory.version + 1;
-    var prompt = `
-Update memory with strong prioritization:
-
-- Preserve important concepts, decisions, and corrections.
-- De-prioritize small talk, repetition, and minor clarifications.
-- If something is repeated or emphasized, increase its importance.
-- Prefer durable knowledge over transient discussion.
-You may discard less important details if needed.
-
-  Existing summary:
-  ${memory.summary}
-
-  Existing facts:
-  ${memory.facts.join("\n")}
-
-  New messages:
-  ${safeStringify(chunk)}
-
-Return ONLY valid JSON.
-Do NOT use markdown.
-Do NOT wrap in \`\`\` blocks.
-Do NOT include explanations.
-
-Output must be strictly parseable by JSON.parse.
-
-Schema (example):
-{
-  "summary": "short concise summary",
-  "facts": ["fact 1", "fact 2"]
-}
-    `;
+    var prompt = ProviderLogic.promptForSummarization(chunk, memory);
 
     summaryProcess.meta = {
       convIndex: convIndex,
@@ -638,17 +593,19 @@ Schema (example):
     };
 
     // update ONLY memoryStore
-    updateMemHelper(convIndex, version, memory);
+    var updatedMemory = Object.assign({}, root.memoryStore);
+
+    updatedMemory[convIndex] = Object.assign({}, memory, {
+      version: version
+    });
+
+    root.memoryStore = updatedMemory;
 
     var commandData = ProviderLogic.buildSummaryCommand(prompt);
     Logger.d("OllamaAssistant", "Summary args: ", commandData.args);
     summaryProcess.buffer = "";
     summaryProcess.command = commandData.args;
     summaryProcess.running = true;
-  }
-
-  function safeStringify(obj) {
-    return JSON.stringify(obj).replace(/```/g, "'''");
   }
 
   function applySummaryUpdate(result, meta) {
@@ -678,31 +635,6 @@ Schema (example):
     saveState();
   }
 
-  function buildContext(index) {
-    var conv = root.conversations[index];
-    var memory = ensureMemory(index);
-
-    var history = [];
-
-    if (memory.summary) {
-      history.push({
-        role: "system",
-        content: "Summary:\n" + memory.summary
-      });
-    }
-
-    if (memory.facts.length > 0) {
-      history.push({
-        role: "system",
-        content: "Facts:\n- " + memory.facts.join("\n- ")
-      });
-    }
-
-    history = history.concat(conv.messages.slice(-2));
-
-    return history;
-  }
-
   function maybeTriggerSummarization(convIndex) {
     var conv = root.conversations[convIndex];
     var memory = ensureMemory(convIndex);
@@ -717,21 +649,22 @@ Schema (example):
     triggerSummarization(convIndex, chunk);
   }
 
-  function sendOpenAIRequest() {
+  function sendChatRequest() {
     root.requestConversationIndex = root.activeConversationIndex;
     var conv = root.conversations[root.activeConversationIndex];
-    var history = buildContext(root.activeConversationIndex);
-    var commandData = ProviderLogic.buildOpenAICommand(openaiBaseUrl, apiKey, model, systemPrompt, history, temperature);
+    var memory = ensureMemory(root.activeConversationIndex);
+    var commandData = ProviderLogic.buildChatCommand(
+      openaiBaseUrl, apiKey, model, systemPrompt, memory, temperature, conv
+    );
 
-    Logger.i("OllamaAssistant", "sendOpenAIRequest: endpoint=" + commandData.url);
-    openaiProcess.buffer = "";
-    openaiProcess.command = commandData.args;
+    Logger.d("OllamaAssistant", "sendChatRequest: endpoint=" + commandData.url);
+    chatProcess.buffer = "";
+    chatProcess.command = commandData.args;
     Logger.d("OllamaAssistant", "args=" + commandData.args);
 
-    Logger.i("OllamaAssistant", "sendOpenAIRequest: starting process");
-    openaiProcess.running = true;
+    Logger.i("OllamaAssistant", "sendChatRequest: starting process");
+    chatProcess.running = true;
   }
-
 
   // =====================
   // IPC Handlers
@@ -774,13 +707,6 @@ Schema (example):
       root.clearMessages();
       ToastService.showNotice(pluginApi?.tr("toast.historyCleared"));
     }
-
-    function translateText(text: string, targetLang: string) {
-      if (text && text.trim() !== "") {
-        root.translate(text, targetLang || root.targetLanguage);
-      }
-    }
-
 
     function setModel(modelName: string) {
       if (pluginApi && modelName) {

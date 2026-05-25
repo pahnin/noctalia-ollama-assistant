@@ -237,7 +237,7 @@ Item {
               anchors.top: parent.top
               anchors.bottom: parent.bottom
 
-              visible: flick.contentX < flick.contentWidth - flick.width - 1
+              visible: flick.contentX < flick.contentWidth - flick.width
 
               gradient: Gradient {
                 orientation: Gradient.Horizontal
